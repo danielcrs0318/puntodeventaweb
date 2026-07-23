@@ -15,6 +15,7 @@ build/
 coverage/
 **/coverage/
 *.tsbuildinfo
+AGENT_INSTRUCTIONS_POS.md
 
 # ─────────────────────────────────────────────
 # Secretos y entorno (NUNCA subir)
