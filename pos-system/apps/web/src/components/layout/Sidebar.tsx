@@ -17,6 +17,7 @@ import {
   Receipt,
   Tags,
   Shield,
+  Building2,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 
@@ -39,6 +40,7 @@ const navItems: NavItem[] = [
   { to: '/cash-register', label: 'Caja', icon: <DollarSign size={20} /> },
   { to: '/reports', label: 'Reportes', icon: <BarChart3 size={20} />, roles: ['admin', 'supervisor'] },
   { to: '/fiscal', label: 'Facturación CAI', icon: <FileText size={20} />, roles: ['admin', 'supervisor'] },
+  { to: '/branches', label: 'Sucursales', icon: <Building2 size={20} />, roles: ['admin'] },
   { to: '/audit', label: 'Auditoría', icon: <Shield size={20} />, roles: ['admin', 'supervisor'] },
   { to: '/settings', label: 'Configuración', icon: <Settings size={20} />, roles: ['admin'] },
 ]

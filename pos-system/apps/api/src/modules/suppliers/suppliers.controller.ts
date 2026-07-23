@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import { CurrentBranchId } from '../../common/decorators/current-branch.decorator'
 import { IsString, IsOptional, IsEmail, IsInt, IsNumber, IsArray, ValidateNested } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -59,20 +60,31 @@ export class SuppliersController {
 
   @Get('purchases')
   getPurchases(
+    @CurrentBranchId() branchId: number,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('supplierId') supplierId?: string,
-  ) { return this.suppliersService.getPurchases(+page, +limit, supplierId ? +supplierId : undefined) }
+  ) {
+    return this.suppliersService.getPurchases(+page, +limit, supplierId ? +supplierId : undefined, branchId)
+  }
 
   @UseGuards(RolesGuard) @Roles('admin', 'supervisor', 'inventario')
   @Post('purchases')
-  createPurchase(@Body() dto: CreatePurchaseDto, @CurrentUser() user: any) {
-    return this.suppliersService.createPurchase(dto.supplierId, user.id, dto.items, dto.notes)
+  createPurchase(
+    @Body() dto: CreatePurchaseDto,
+    @CurrentUser() user: any,
+    @CurrentBranchId() branchId: number,
+  ) {
+    return this.suppliersService.createPurchase(dto.supplierId, user.id, branchId, dto.items, dto.notes)
   }
 
   @UseGuards(RolesGuard) @Roles('admin', 'supervisor')
   @Patch('purchases/:id/complete')
-  completePurchase(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
-    return this.suppliersService.completePurchase(id, user.id)
+  completePurchase(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+    @CurrentBranchId() branchId: number,
+  ) {
+    return this.suppliersService.completePurchase(id, user.id, branchId)
   }
 }

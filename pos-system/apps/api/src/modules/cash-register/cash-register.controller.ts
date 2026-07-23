@@ -4,6 +4,7 @@ import type { Response } from 'express'
 import { CashRegisterService } from './cash-register.service'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import { CurrentBranchId } from '../../common/decorators/current-branch.decorator'
 import { IsInt, IsNumber, IsString, IsEnum, Min } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -28,42 +29,67 @@ export class CashRegisterController {
   constructor(private cashRegisterService: CashRegisterService) {}
 
   @Get('active-session')
-  getActiveSession(@CurrentUser() user: any) {
-    return this.cashRegisterService.getActiveSession(user.id)
+  getActiveSession(@CurrentUser() user: any, @CurrentBranchId() branchId: number) {
+    return this.cashRegisterService.getActiveSession(user.id, branchId)
   }
 
   @Post('open')
   @HttpCode(HttpStatus.CREATED)
-  open(@Body() dto: OpenSessionDto, @CurrentUser() user: any) {
-    return this.cashRegisterService.openSession(user.id, dto.openingAmount)
+  open(
+    @Body() dto: OpenSessionDto,
+    @CurrentUser() user: any,
+    @CurrentBranchId() branchId: number,
+  ) {
+    return this.cashRegisterService.openSession(user.id, branchId, dto.openingAmount)
   }
 
   @Post('close')
   @HttpCode(HttpStatus.OK)
-  close(@Body() dto: CloseSessionDto, @CurrentUser() user: any) {
-    return this.cashRegisterService.closeSession(user.id, dto.closingAmount)
+  close(
+    @Body() dto: CloseSessionDto,
+    @CurrentUser() user: any,
+    @CurrentBranchId() branchId: number,
+  ) {
+    return this.cashRegisterService.closeSession(user.id, branchId, dto.closingAmount)
   }
 
   @Get('movements')
-  getMovements(@Query('sessionId') sessionId: string) {
-    return this.cashRegisterService.getMovements(+sessionId)
+  getMovements(
+    @Query('sessionId') sessionId: string,
+    @CurrentUser() user: any,
+    @CurrentBranchId() branchId: number,
+  ) {
+    return this.cashRegisterService.getMovements(+sessionId, branchId, user.id, user.role?.name)
   }
 
   @Post('movements')
-  addMovement(@Body() dto: AddMovementDto, @CurrentUser() user: any) {
-    return this.cashRegisterService.addMovement(dto.sessionId, user.id, dto.type, dto.amount, dto.reason)
+  addMovement(
+    @Body() dto: AddMovementDto,
+    @CurrentUser() user: any,
+    @CurrentBranchId() branchId: number,
+  ) {
+    return this.cashRegisterService.addMovement(
+      dto.sessionId, user.id, dto.type, dto.amount, dto.reason, branchId, user.role?.name,
+    )
   }
 
   @Get('sessions')
   getSessions(
+    @CurrentBranchId() branchId: number,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('userId') userId?: string,
-  ) { return this.cashRegisterService.getSessions(+page, +limit, userId ? +userId : undefined) }
+  ) {
+    return this.cashRegisterService.getSessions(+page, +limit, userId ? +userId : undefined, branchId)
+  }
 
   @Get('sessions/:id/close-report')
-  async closeReport(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
-    const pdf = await this.cashRegisterService.generateCloseReport(id)
+  async closeReport(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentBranchId() branchId: number,
+    @Res() res: Response,
+  ) {
+    const pdf = await this.cashRegisterService.generateCloseReport(id, branchId)
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="cierre-caja-${id}.pdf"`,

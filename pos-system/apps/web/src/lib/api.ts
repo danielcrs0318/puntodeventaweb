@@ -8,11 +8,14 @@ const api = axios.create({
   timeout: 30000,
 })
 
-// Request interceptor: adjunta el token
+// Request interceptor: adjunta el token y la sucursal activa
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().accessToken
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  const { accessToken, activeBranch } = useAuthStore.getState()
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`
+  }
+  if (activeBranch?.id) {
+    config.headers['X-Branch-Id'] = String(activeBranch.id)
   }
   return config
 })
@@ -55,8 +58,8 @@ api.interceptors.response.use(
 
       try {
         const res = await axios.post('/api/auth/refresh', { refreshToken })
-        const { accessToken, user, refreshToken: newRefresh } = res.data
-        useAuthStore.getState().setAuth(user, accessToken, newRefresh)
+        const { accessToken, user, refreshToken: newRefresh, branches, activeBranch } = res.data
+        useAuthStore.getState().setAuth(user, accessToken, newRefresh, branches, activeBranch)
         api.defaults.headers.common.Authorization = `Bearer ${accessToken}`
         processQueue(null, accessToken)
         originalRequest.headers.Authorization = `Bearer ${accessToken}`

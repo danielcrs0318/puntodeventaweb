@@ -22,6 +22,7 @@ const FiscalPage = lazy(() => import('@/features/fiscal/FiscalPage'))
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage'))
 const CategoriesPage = lazy(() => import('@/features/categories/CategoriesPage'))
 const AuditPage = lazy(() => import('@/features/audit/AuditPage'))
+const BranchesPage = lazy(() => import('@/features/branches/BranchesPage'))
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="cash-register" element={<CashRegisterPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="fiscal" element={<FiscalPage />} />
+          <Route path="branches" element={<BranchesPage />} />
           <Route path="audit" element={<AuditPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>

@@ -38,7 +38,13 @@ export default function LoginPage() {
       return res.data
     },
     onSuccess: (data) => {
-      setAuth(data.user, data.accessToken, data.refreshToken)
+      setAuth(
+        data.user,
+        data.accessToken,
+        data.refreshToken,
+        data.branches ?? [],
+        data.activeBranch ?? null,
+      )
       navigate('/dashboard', { replace: true })
       toast.success('Bienvenido', `Hola, ${data.user.name}`)
     },

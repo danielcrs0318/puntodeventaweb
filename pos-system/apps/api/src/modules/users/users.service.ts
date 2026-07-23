@@ -19,13 +19,53 @@ export class UsersService {
     return u
   }
 
-  async create(data: { name: string; email: string; password: string; roleId: number }) {
+  async create(data: {
+    name: string
+    email: string
+    password: string
+    roleId: number
+    branchIds?: number[]
+    defaultBranchId?: number
+  }) {
     const exists = await this.prisma.user.findUnique({ where: { email: data.email } })
     if (exists) throw new ConflictException('El correo ya está registrado')
     const passwordHash = await bcrypt.hash(data.password, 12)
-    return this.prisma.user.create({
-      data: { name: data.name, email: data.email, passwordHash, roleId: data.roleId },
-      include: { role: true },
+
+    const mainBranch = await this.prisma.branch.findFirst({
+      where: { isActive: true },
+      orderBy: [{ isMain: 'desc' }, { id: 'asc' }],
+    })
+    const branchIds = data.branchIds?.length
+      ? data.branchIds
+      : mainBranch
+        ? [mainBranch.id]
+        : []
+    if (!branchIds.length) {
+      throw new ConflictException('No hay sucursales activas para asignar al usuario')
+    }
+    const defaultBranchId =
+      data.defaultBranchId && branchIds.includes(data.defaultBranchId)
+        ? data.defaultBranchId
+        : branchIds[0]
+
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name: data.name,
+          email: data.email,
+          passwordHash,
+          roleId: data.roleId,
+        },
+        include: { role: true },
+      })
+      await tx.userBranch.createMany({
+        data: branchIds.map((branchId) => ({
+          userId: user.id,
+          branchId,
+          isDefault: branchId === defaultBranchId,
+        })),
+      })
+      return user
     })
   }
 

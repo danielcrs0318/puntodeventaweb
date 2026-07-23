@@ -14,6 +14,7 @@ interface CashRegisterState {
   setActiveSession: (session: CashRegisterSession | null) => void
   openSession: (session: CashRegisterSession) => void
   closeSession: () => void
+  clearSession: () => void
 }
 
 export const useCashRegisterStore = create<CashRegisterState>()(
@@ -23,6 +24,7 @@ export const useCashRegisterStore = create<CashRegisterState>()(
       setActiveSession: (session) => set({ activeSession: session }),
       openSession: (session) => set({ activeSession: session }),
       closeSession: () => set({ activeSession: null }),
+      clearSession: () => set({ activeSession: null }),
     }),
     { name: 'pos-cash-register' },
   ),

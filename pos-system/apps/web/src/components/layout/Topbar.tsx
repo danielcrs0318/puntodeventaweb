@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Bell,
   ShoppingCart,
@@ -7,13 +8,13 @@ import {
   Menu,
   AlertTriangle,
   DollarSign,
+  Building2,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useCashRegisterStore } from '@/store/cashRegisterStore'
 import { useCartStore } from '@/store/cartStore'
 import { formatDateTime } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
 
 interface TopbarProps {
   onMenuToggle: () => void
@@ -21,14 +22,25 @@ interface TopbarProps {
 }
 
 export function Topbar({ onMenuToggle, sidebarCollapsed }: TopbarProps) {
-  const { user, logout } = useAuthStore()
-  const { activeSession } = useCashRegisterStore()
+  const { user, logout, branches, activeBranch, setActiveBranch } = useAuthStore()
+  const { activeSession, clearSession } = useCashRegisterStore()
+  const clearCart = useCartStore((s) => s.clearCart)
   const itemCount = useCartStore((s) => s.itemCount())
   const navigate = useNavigate()
+  const qc = useQueryClient()
 
   const handleLogout = () => {
     logout()
     navigate('/login', { replace: true })
+  }
+
+  const handleBranchChange = (branchId: number) => {
+    const next = branches.find((b) => b.id === branchId)
+    if (!next || next.id === activeBranch?.id) return
+    setActiveBranch(next)
+    clearSession()
+    clearCart()
+    qc.clear()
   }
 
   return (
@@ -37,11 +49,9 @@ export function Topbar({ onMenuToggle, sidebarCollapsed }: TopbarProps) {
         'fixed top-0 right-0 h-16 bg-bg-secondary border-b border-border-subtle z-30',
         'flex items-center px-4 gap-3 transition-all duration-250',
         sidebarCollapsed ? 'left-18' : 'left-64',
-        // Móvil: siempre desde la izquierda
         'max-md:left-0',
       ].join(' ')}
     >
-      {/* Botón menú (móvil) */}
       <button
         onClick={onMenuToggle}
         className="md:hidden p-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
@@ -50,15 +60,36 @@ export function Topbar({ onMenuToggle, sidebarCollapsed }: TopbarProps) {
         <Menu size={20} />
       </button>
 
-      {/* Sesión de caja activa */}
+      {branches.length > 0 && (
+        <div className="flex items-center gap-2 min-w-0">
+          <Building2 size={16} className="text-accent-light flex-shrink-0" />
+          {branches.length === 1 ? (
+            <span className="text-sm font-medium text-text-primary truncate">
+              {activeBranch?.name ?? branches[0].name}
+            </span>
+          ) : (
+            <select
+              className="bg-bg-elevated border border-border-subtle rounded-md text-sm text-text-primary px-2 py-1.5 max-w-[180px] sm:max-w-[220px]"
+              value={activeBranch?.id ?? ''}
+              onChange={(e) => handleBranchChange(Number(e.target.value))}
+              aria-label="Sucursal activa"
+            >
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.code} — {b.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         {activeSession ? (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-success-muted border border-green-700/40">
             <DollarSign size={14} className="text-green-400" />
             <div className="hidden sm:block">
-              <p className="text-xs font-medium text-green-400 leading-none">
-                Caja Abierta
-              </p>
+              <p className="text-xs font-medium text-green-400 leading-none">Caja Abierta</p>
               <p className="text-xs text-text-secondary leading-none mt-0.5">
                 {formatDateTime(activeSession.openedAt)}
               </p>
@@ -74,10 +105,8 @@ export function Topbar({ onMenuToggle, sidebarCollapsed }: TopbarProps) {
         )}
       </div>
 
-      {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Acceso rápido: nueva venta */}
       <Button
         variant="primary"
         size="sm"
@@ -93,18 +122,15 @@ export function Topbar({ onMenuToggle, sidebarCollapsed }: TopbarProps) {
         )}
       </Button>
 
-      {/* Notificaciones */}
       <button
         className="relative p-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
         aria-label="Notificaciones"
         onClick={() => navigate('/reports')}
       >
         <Bell size={18} />
-        {/* Badge de alerta */}
         <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-warning" />
       </button>
 
-      {/* Usuario */}
       <div className="flex items-center gap-2 pl-3 border-l border-border-subtle">
         <div className="w-8 h-8 rounded-full bg-accent-muted flex items-center justify-center flex-shrink-0">
           <User size={16} className="text-accent-primary" />

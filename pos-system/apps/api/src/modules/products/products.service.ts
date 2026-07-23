@@ -7,7 +7,7 @@ import * as path from 'path'
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(page = 1, limit = 20, search?: string, active?: boolean) {
+  async findAll(page = 1, limit = 20, search?: string, active?: boolean, branchId?: number) {
     const skip = (page - 1) * limit
     const where: any = {}
     if (active !== undefined) where.isActive = active
@@ -21,17 +21,25 @@ export class ProductsService {
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
-        include: { category: true, inventory: true },
+        include: {
+          category: true,
+          inventory: branchId ? { where: { branchId } } : true,
+        },
         skip,
         take: limit,
         orderBy: { name: 'asc' },
       }),
       this.prisma.product.count({ where }),
     ])
-    return { data, total, page, limit }
+    // Compatibilidad UI: inventory como objeto de la sucursal activa
+    const mapped = data.map((p) => ({
+      ...p,
+      inventory: Array.isArray(p.inventory) ? (p.inventory[0] ?? null) : p.inventory,
+    }))
+    return { data: mapped, total, page, limit }
   }
 
-  findBySearch(q: string, active = true) {
+  findBySearch(q: string, active = true, branchId?: number) {
     return this.prisma.product.findMany({
       where: {
         isActive: active,
@@ -41,32 +49,59 @@ export class ProductsService {
           { barcode: { contains: q } },
         ],
       },
-      include: { inventory: true },
+      include: {
+        inventory: branchId ? { where: { branchId } } : true,
+      },
       take: 30,
       orderBy: { name: 'asc' },
-    })
+    }).then((rows) =>
+      rows.map((p) => ({
+        ...p,
+        inventory: Array.isArray(p.inventory) ? (p.inventory[0] ?? null) : p.inventory,
+      })),
+    )
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, branchId?: number) {
     const p = await this.prisma.product.findUnique({
       where: { id },
-      include: { category: true, inventory: true },
+      include: {
+        category: true,
+        inventory: branchId ? { where: { branchId } } : true,
+      },
     })
     if (!p) throw new NotFoundException('Producto no encontrado')
-    return p
+    return {
+      ...p,
+      inventory: Array.isArray(p.inventory) ? (p.inventory[0] ?? null) : p.inventory,
+    }
   }
 
   async create(data: {
     sku: string; barcode?: string; name: string; description?: string
     categoryId?: number; costPrice: number; salePrice: number; taxRate: number
     unitType?: string; imageUrl?: string; initialStock?: number; minStockAlert?: number
-  }) {
+  }, branchId?: number) {
     const { initialStock = 0, minStockAlert = 5, ...productData } = data
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.create({ data: { ...productData, unitType: (productData.unitType ?? 'UNIDAD') as any } })
-      await tx.inventory.create({
-        data: { productId: product.id, quantity: initialStock, minStockAlert },
-      })
+      const branches = await tx.branch.findMany({ where: { isActive: true }, select: { id: true } })
+      const targetBranches = branches.length
+        ? branches
+        : branchId
+          ? [{ id: branchId }]
+          : []
+      if (targetBranches.length) {
+        await tx.inventory.createMany({
+          data: targetBranches.map((b) => ({
+            productId: product.id,
+            branchId: b.id,
+            quantity: branchId && b.id === branchId ? initialStock : (branchId ? 0 : initialStock),
+            minStockAlert,
+          })),
+          skipDuplicates: true,
+        })
+      }
       return product
     })
   }
@@ -90,7 +125,7 @@ export class ProductsService {
     return this.prisma.product.update({ where: { id }, data: { isActive: false } })
   }
 
-  async importCsv(file: Express.Multer.File): Promise<{ imported: number; errors: string[] }> {
+  async importCsv(file: Express.Multer.File, branchId?: number): Promise<{ imported: number; errors: string[] }> {
     const content = file.buffer?.toString('utf-8') ?? fs.readFileSync(file.path, 'utf-8')
     const lines = content.split('\n').filter(Boolean)
     const errors: string[] = []
@@ -109,7 +144,7 @@ export class ProductsService {
           taxRate: 0.15,
           barcode: barcode || undefined,
           initialStock: parseFloat(stock) || 0,
-        })
+        }, branchId)
         imported++
       } catch (err: any) {
         errors.push(`Fila ${i + 1}: ${err.message}`)

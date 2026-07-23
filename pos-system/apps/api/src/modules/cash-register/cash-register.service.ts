@@ -10,37 +10,50 @@ export class CashRegisterService {
     private settingsService: SettingsService,
   ) {}
 
-  async getActiveSession(userId?: number) {
+  async getActiveSession(userId?: number, branchId?: number) {
     const where: any = { status: 'ABIERTA' }
     if (userId) where.userId = userId
+    if (branchId) where.branchId = branchId
     return this.prisma.cashRegisterSession.findFirst({
       where,
-      include: { user: { select: { id: true, name: true } } },
+      include: {
+        user: { select: { id: true, name: true } },
+        branch: { select: { id: true, code: true, name: true } },
+      },
       orderBy: { openedAt: 'desc' },
     })
   }
 
-  async openSession(userId: number, openingAmount: number) {
+  async openSession(userId: number, branchId: number, openingAmount: number) {
     const existing = await this.prisma.cashRegisterSession.findFirst({
-      where: { userId, status: 'ABIERTA' },
+      where: { userId, branchId, status: 'ABIERTA' },
     })
-    if (existing) throw new BadRequestException('Ya tienes una caja abierta')
+    if (existing) throw new BadRequestException('Ya tienes una caja abierta en esta sucursal')
 
     const session = await this.prisma.cashRegisterSession.create({
-      data: { userId, openingAmount, status: 'ABIERTA' },
-      include: { user: { select: { id: true, name: true } } },
+      data: { userId, branchId, openingAmount, status: 'ABIERTA' },
+      include: {
+        user: { select: { id: true, name: true } },
+        branch: { select: { id: true, code: true, name: true } },
+      },
     })
     await this.prisma.auditLog.create({
-      data: { userId, action: 'CASH_OPEN', entity: 'CashRegisterSession', entityId: session.id, details: { openingAmount } },
+      data: {
+        userId,
+        action: 'CASH_OPEN',
+        entity: 'CashRegisterSession',
+        entityId: session.id,
+        details: { openingAmount, branchId },
+      },
     })
     return session
   }
 
-  async closeSession(userId: number, closingAmount: number) {
+  async closeSession(userId: number, branchId: number, closingAmount: number) {
     const session = await this.prisma.cashRegisterSession.findFirst({
-      where: { userId, status: 'ABIERTA' },
+      where: { userId, branchId, status: 'ABIERTA' },
     })
-    if (!session) throw new NotFoundException('No hay caja abierta')
+    if (!session) throw new NotFoundException('No hay caja abierta en esta sucursal')
 
     // Calcular ventas en efectivo durante la sesión
     const salesCash = await this.prisma.salePayment.aggregate({
@@ -79,24 +92,34 @@ export class CashRegisterService {
         action: 'CASH_CLOSE',
         entity: 'CashRegisterSession',
         entityId: session.id,
-        details: { closingAmount, expectedAmount, difference },
+        details: { closingAmount, expectedAmount, difference, branchId },
       },
     })
 
     return closed
   }
 
-  getMovements(sessionId: number) {
-    return this.prisma.cashMovement.findMany({
-      where: { cashRegisterSessionId: sessionId },
-      include: { user: { select: { id: true, name: true } } },
-      orderBy: { createdAt: 'desc' },
-    })
+  getMovements(sessionId: number, branchId: number, userId?: number, role?: string) {
+    return this.assertSessionAccess(sessionId, branchId, userId, role).then(() =>
+      this.prisma.cashMovement.findMany({
+        where: { cashRegisterSessionId: sessionId },
+        include: { user: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    )
   }
 
-  async addMovement(sessionId: number, userId: number, type: 'INGRESO' | 'EGRESO', amount: number, reason: string) {
-    const session = await this.prisma.cashRegisterSession.findUnique({ where: { id: sessionId } })
-    if (!session || session.status !== 'ABIERTA') {
+  async addMovement(
+    sessionId: number,
+    userId: number,
+    type: 'INGRESO' | 'EGRESO',
+    amount: number,
+    reason: string,
+    branchId: number,
+    role?: string,
+  ) {
+    const session = await this.assertSessionAccess(sessionId, branchId, userId, role)
+    if (session.status !== 'ABIERTA') {
       throw new BadRequestException('No hay caja abierta con ese ID')
     }
     const signedAmount = type === 'EGRESO' ? -Math.abs(amount) : Math.abs(amount)
@@ -109,19 +132,41 @@ export class CashRegisterService {
         action: type === 'INGRESO' ? 'CASH_IN' : 'CASH_OUT',
         entity: 'CashMovement',
         entityId: movement.id,
-        details: { sessionId, amount: signedAmount, reason },
+        details: { sessionId, amount: signedAmount, reason, branchId },
       },
     })
     return movement
   }
 
-  async getSessions(page = 1, limit = 20, userId?: number) {
+  private async assertSessionAccess(
+    sessionId: number,
+    branchId: number,
+    userId?: number,
+    role?: string,
+  ) {
+    const session = await this.prisma.cashRegisterSession.findFirst({
+      where: {
+        id: sessionId,
+        branchId,
+        ...(role === 'admin' || role === 'supervisor' ? {} : userId ? { userId } : {}),
+      },
+    })
+    if (!session) throw new NotFoundException('Sesión de caja no encontrada en esta sucursal')
+    return session
+  }
+
+  async getSessions(page = 1, limit = 20, userId?: number, branchId?: number) {
     const skip = (page - 1) * limit
-    const where: any = userId ? { userId } : {}
+    const where: any = {}
+    if (userId) where.userId = userId
+    if (branchId) where.branchId = branchId
     const [data, total] = await Promise.all([
       this.prisma.cashRegisterSession.findMany({
         where,
-        include: { user: { select: { id: true, name: true } } },
+        include: {
+          user: { select: { id: true, name: true } },
+          branch: { select: { id: true, code: true, name: true } },
+        },
         skip,
         take: limit,
         orderBy: { openedAt: 'desc' },
@@ -131,9 +176,9 @@ export class CashRegisterService {
     return { data, total, page, limit }
   }
 
-  async generateCloseReport(sessionId: number): Promise<Buffer> {
-    const session = await this.prisma.cashRegisterSession.findUnique({
-      where: { id: sessionId },
+  async generateCloseReport(sessionId: number, branchId: number): Promise<Buffer> {
+    const session = await this.prisma.cashRegisterSession.findFirst({
+      where: { id: sessionId, branchId },
       include: {
         user: { select: { name: true } },
         cashMovements: { orderBy: { createdAt: 'asc' } },

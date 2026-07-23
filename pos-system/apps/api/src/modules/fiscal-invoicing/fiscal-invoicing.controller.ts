@@ -4,6 +4,7 @@ import { FiscalInvoicingService } from './fiscal-invoicing.service'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
+import { CurrentBranchId } from '../../common/decorators/current-branch.decorator'
 import { IsString, IsInt, IsOptional, IsBoolean, IsDateString } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -16,6 +17,7 @@ class CreateCaiRangeDto {
   @IsInt() @Type(() => Number) rangeEnd: number
   @IsDateString() authorizationDate: string
   @IsDateString() expirationDate: string
+  @IsOptional() @IsInt() @Type(() => Number) branchId?: number
 }
 class UpdateCaiRangeDto {
   @IsOptional() @IsString() caiCode?: string
@@ -39,8 +41,14 @@ export class FiscalInvoicingController {
 
   @Get('cai-ranges') getCaiRanges() { return this.fiscalInvoicingService.getCaiRanges() }
 
-  @Post('cai-ranges') createCaiRange(@Body() dto: CreateCaiRangeDto) {
-    return this.fiscalInvoicingService.createCaiRange(dto)
+  @Post('cai-ranges') createCaiRange(
+    @Body() dto: CreateCaiRangeDto,
+    @CurrentBranchId() activeBranchId: number,
+  ) {
+    return this.fiscalInvoicingService.createCaiRange({
+      ...dto,
+      branchId: dto.branchId ?? activeBranchId,
+    })
   }
 
   @Patch('cai-ranges/:id') updateCaiRange(

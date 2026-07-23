@@ -53,6 +53,37 @@ export class AuthService {
     await this.prisma.auditLog.create({
       data: { userId: user.id, action: 'LOGIN', entity: 'User', entityId: user.id, details: {} },
     })
+
+    let branches: { id: number; code: string; name: string; isMain: boolean; isDefault: boolean }[] = []
+    if (user.role.name === 'admin') {
+      const all = await this.prisma.branch.findMany({
+        where: { isActive: true },
+        orderBy: [{ isMain: 'desc' }, { name: 'asc' }],
+      })
+      branches = all.map((b) => ({
+        id: b.id,
+        code: b.code,
+        name: b.name,
+        isMain: b.isMain,
+        isDefault: b.isMain,
+      }))
+    } else {
+      const links = await this.prisma.userBranch.findMany({
+        where: { userId: user.id, branch: { isActive: true } },
+        include: { branch: true },
+        orderBy: [{ isDefault: 'desc' }, { branchId: 'asc' }],
+      })
+      branches = links.map((l) => ({
+        id: l.branch.id,
+        code: l.branch.code,
+        name: l.branch.name,
+        isMain: l.branch.isMain,
+        isDefault: l.isDefault,
+      }))
+    }
+
+    const activeBranch = branches.find((b) => b.isDefault) ?? branches[0] ?? null
+
     return {
       accessToken,
       refreshToken: rawRefresh,
@@ -62,6 +93,8 @@ export class AuthService {
         email: user.email,
         role: { id: user.role.id, name: user.role.name, permissions },
       },
+      branches,
+      activeBranch,
     }
   }
 

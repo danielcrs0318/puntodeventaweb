@@ -5,6 +5,7 @@ import { ReportsService } from './reports.service'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
+import { CurrentBranchId } from '../../common/decorators/current-branch.decorator'
 
 @ApiTags('Reportes')
 @ApiBearerAuth()
@@ -15,39 +16,60 @@ export class ReportsController {
   constructor(private reportsService: ReportsService) {}
 
   @Get('dashboard')
-  getDashboard() { return this.reportsService.getDashboard() }
+  getDashboard(@CurrentBranchId() branchId: number) {
+    return this.reportsService.getDashboard(branchId)
+  }
 
   @Get('sales')
-  getSalesReport(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.reportsService.getSalesReport(from, to)
+  getSalesReport(
+    @CurrentBranchId() branchId: number,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reportsService.getSalesReport(from, to, branchId)
   }
 
   @Get('products')
-  getProductsReport(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.reportsService.getProductsReport(from, to)
+  getProductsReport(
+    @CurrentBranchId() branchId: number,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reportsService.getProductsReport(from, to, branchId)
   }
 
   @Get('cashiers')
-  getCashiersReport(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.reportsService.getCashiersReport(from, to)
+  getCashiersReport(
+    @CurrentBranchId() branchId: number,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reportsService.getCashiersReport(from, to, branchId)
   }
 
   @Get('inventory')
-  getInventoryReport() { return this.reportsService.getInventoryReport() }
+  getInventoryReport(@CurrentBranchId() branchId: number) {
+    return this.reportsService.getInventoryReport(branchId)
+  }
 
   @Get('gross-profit')
-  getGrossProfitReport(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.reportsService.getGrossProfitReport(from, to)
+  getGrossProfitReport(
+    @CurrentBranchId() branchId: number,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reportsService.getGrossProfitReport(from, to, branchId)
   }
 
   @Get('export/pdf')
   async exportPdf(
+    @CurrentBranchId() branchId: number,
     @Query('type') type: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Res() res?: Response,
   ) {
-    const buffer = await this.reportsService.exportPdf(type, from, to)
+    const buffer = await this.reportsService.exportPdf(type, from, to, branchId)
     res!.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="reporte-${type}.pdf"`,
@@ -58,12 +80,13 @@ export class ReportsController {
 
   @Get('export/excel')
   async exportExcel(
+    @CurrentBranchId() branchId: number,
     @Query('type') type: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Res() res?: Response,
   ) {
-    const csv = await this.reportsService.exportExcel(type, from, to)
+    const csv = await this.reportsService.exportExcel(type, from, to, branchId)
     res!.set({
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="reporte-${type}.csv"`,

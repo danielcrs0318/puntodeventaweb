@@ -28,9 +28,11 @@ export class SuppliersService {
     return this.prisma.supplier.update({ where: { id }, data: { isActive: false } })
   }
 
-  async getPurchases(page = 1, limit = 20, supplierId?: number) {
+  async getPurchases(page = 1, limit = 20, supplierId?: number, branchId?: number) {
     const skip = (page - 1) * limit
-    const where: any = supplierId ? { supplierId } : {}
+    const where: any = {}
+    if (supplierId) where.supplierId = supplierId
+    if (branchId) where.branchId = branchId
     const [data, total] = await Promise.all([
       this.prisma.purchase.findMany({
         where,
@@ -38,6 +40,7 @@ export class SuppliersService {
           supplier: true,
           user: { select: { id: true, name: true } },
           items: { include: { product: true } },
+          branch: { select: { id: true, code: true, name: true } },
         },
         skip,
         take: limit,
@@ -51,15 +54,16 @@ export class SuppliersService {
   async createPurchase(
     supplierId: number,
     userId: number,
+    branchId: number,
     items: { productId: number; quantity: number; unitCost: number }[],
     notes?: string,
   ) {
     const total = items.reduce((sum, i) => sum + i.quantity * i.unitCost, 0)
     return this.prisma.$transaction(async (tx) => {
-      // La compra nace PENDIENTE; el stock se incrementa al completar/recibir
       const purchase = await tx.purchase.create({
         data: {
           supplierId,
+          branchId,
           userId,
           total,
           status: 'PENDIENTE',
@@ -82,7 +86,7 @@ export class SuppliersService {
           action: 'PURCHASE_CREATED',
           entity: 'Purchase',
           entityId: purchase.id,
-          details: { supplierId, total, itemCount: items.length, status: 'PENDIENTE' },
+          details: { supplierId, total, itemCount: items.length, status: 'PENDIENTE', branchId },
         },
       })
 
@@ -90,9 +94,9 @@ export class SuppliersService {
     })
   }
 
-  async completePurchase(purchaseId: number, userId: number) {
-    const purchase = await this.prisma.purchase.findUnique({
-      where: { id: purchaseId },
+  async completePurchase(purchaseId: number, userId: number, branchId: number) {
+    const purchase = await this.prisma.purchase.findFirst({
+      where: { id: purchaseId, branchId },
       include: { items: true },
     })
     if (!purchase) throw new NotFoundException('Compra no encontrada')
@@ -104,9 +108,18 @@ export class SuppliersService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.purchase.updateMany({
+        where: { id: purchaseId, status: 'PENDIENTE', branchId },
+        data: { status: 'COMPLETADA' },
+      })
+      if (claimed.count === 0) {
+        throw new BadRequestException('La compra ya fue completada o no está pendiente')
+      }
+
       for (const item of purchase.items) {
         await this.inventoryService.increaseStock(
           item.productId,
+          purchase.branchId,
           Number(item.quantity),
           userId,
           'COMPRA',
@@ -118,9 +131,8 @@ export class SuppliersService {
         })
       }
 
-      const updated = await tx.purchase.update({
+      const updated = await tx.purchase.findUnique({
         where: { id: purchaseId },
-        data: { status: 'COMPLETADA' },
         include: { items: { include: { product: true } }, supplier: true },
       })
 
@@ -130,7 +142,11 @@ export class SuppliersService {
           action: 'PURCHASE_COMPLETED',
           entity: 'Purchase',
           entityId: purchaseId,
-          details: { itemCount: purchase.items.length, total: Number(purchase.total) },
+          details: {
+            itemCount: purchase.items.length,
+            total: Number(purchase.total),
+            branchId: purchase.branchId,
+          },
         },
       })
 

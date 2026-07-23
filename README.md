@@ -136,6 +136,27 @@ Copia `pos-system/apps/api/.env.example` → `.env.development`.
 
 ---
 
+## Multi-sucursal (varias tiendas / varios cajeros)
+
+El POS soporta varias sucursales y varios usuarios a la vez:
+
+1. Admin crea sucursales en **Sucursales** (`/branches`).
+2. Asigna usuarios a sucursales (`POST /branches/users/:id/assign` o al crear usuario).
+3. Cada cajero elige la sucursal en el topbar; el stock, la caja y las ventas quedan aislados.
+4. Varias personas pueden vender en paralelo sin pisar correlativos ni sobrevender (stock atómico).
+
+Migración de una BD existente (conserva datos → sucursal `MATRIZ`):
+
+```bash
+cd pos-system/apps/api
+npx prisma db execute --file prisma/migrate-multi-branch.sql --schema prisma/schema.prisma
+npx prisma generate
+```
+
+Si el API está en marcha, deténlo antes de `prisma generate` (Windows puede bloquear el DLL del engine).
+
+---
+
 ## Módulos principales
 
 | Módulo | Qué hace |

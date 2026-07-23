@@ -19,14 +19,20 @@ export class FiscalInvoicingService {
     rangeEnd: number
     authorizationDate: Date | string
     expirationDate: Date | string
+    branchId?: number
   }) {
     return this.prisma.caiRange.create({
       data: {
-        ...data,
+        caiCode: data.caiCode,
         documentType: data.documentType as any,
+        branchOfficeCode: data.branchOfficeCode,
+        posCode: data.posCode,
+        rangeStart: data.rangeStart,
+        rangeEnd: data.rangeEnd,
         currentNumber: data.rangeStart,
         authorizationDate: new Date(data.authorizationDate),
         expirationDate: new Date(data.expirationDate),
+        branchId: data.branchId ?? null,
       },
     })
   }
@@ -46,14 +52,17 @@ export class FiscalInvoicingService {
     return this.prisma.caiRange.delete({ where: { id } })
   }
 
-  async getActiveRange(documentType: string) {
+  async getActiveRange(documentType: string, branchId?: number) {
     const range = await this.prisma.caiRange.findFirst({
       where: {
         documentType: documentType as any,
         isActive: true,
         expirationDate: { gte: new Date() },
+        ...(branchId
+          ? { OR: [{ branchId }, { branchId: null }] }
+          : {}),
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ branchId: 'desc' }, { createdAt: 'asc' }],
     })
     if (!range) throw new BadRequestException('No hay rango CAI activo y vigente para este tipo de documento')
     if (range.currentNumber > range.rangeEnd) {
@@ -72,9 +81,10 @@ export class FiscalInvoicingService {
     customerName?: string | null,
     customerTaxId?: string | null,
     tx?: Prisma.TransactionClient,
+    branchId?: number,
   ) {
     const db = tx ?? this.prisma
-    const range = await this.getActiveRange('FACTURA')
+    const range = await this.getActiveRange('FACTURA', branchId)
 
     // Incremento atómico con optimistic locking
     const currentNum = range.currentNumber
@@ -109,10 +119,13 @@ export class FiscalInvoicingService {
     return fiscalInvoice
   }
 
-  async voidFiscalInvoice(saleId: number) {
-    const fi = await this.prisma.fiscalInvoice.findFirst({ where: { saleId } })
+  async voidFiscalInvoice(saleId: number, tx?: Prisma.TransactionClient) {
+    const db = tx ?? this.prisma
+    const fi = await db.fiscalInvoice.findFirst({
+      where: { saleId, documentType: 'FACTURA', isVoided: false },
+    })
     if (!fi) return
-    return this.prisma.fiscalInvoice.update({
+    return db.fiscalInvoice.update({
       where: { id: fi.id },
       data: { isVoided: true },
     })
@@ -124,13 +137,25 @@ export class FiscalInvoicingService {
     customerName?: string | null,
     customerTaxId?: string | null,
     tx?: Prisma.TransactionClient,
+    branchId?: number,
   ) {
     const db = tx ?? this.prisma
-    const range = await this.getActiveRange('NOTA_CREDITO')
+    const original = await db.fiscalInvoice.findFirst({
+      where: { saleId, documentType: 'FACTURA' },
+      orderBy: { issuedAt: 'asc' },
+    })
 
-    const currentNum = range.currentNumber
+    let caiBranchId = branchId
+    if (caiBranchId == null && original) {
+      const origRange = await db.caiRange.findUnique({ where: { id: original.caiRangeId } })
+      caiBranchId = origRange?.branchId ?? undefined
+    }
+
+    const activeRange = await this.getActiveRange('NOTA_CREDITO', caiBranchId)
+
+    const currentNum = activeRange.currentNumber
     const updateResult = await db.caiRange.updateMany({
-      where: { id: range.id, currentNumber: currentNum },
+      where: { id: activeRange.id, currentNumber: currentNum },
       data: { currentNumber: currentNum + 1 },
     })
 
@@ -138,15 +163,15 @@ export class FiscalInvoicingService {
       throw new BadRequestException('Error de concurrencia al asignar nota de crédito. Reintenta.')
     }
 
-    const branch = range.branchOfficeCode.padStart(3, '0')
-    const pos = range.posCode.padStart(3, '0')
+    const branch = activeRange.branchOfficeCode.padStart(3, '0')
+    const pos = activeRange.posCode.padStart(3, '0')
     const num = String(currentNum).padStart(8, '0')
     const fullInvoiceNumber = `${branch}-${pos}-01-${num}`
 
     return db.fiscalInvoice.create({
       data: {
         saleId,
-        caiRangeId: range.id,
+        caiRangeId: activeRange.id,
         fullInvoiceNumber,
         documentType: 'NOTA_CREDITO' as any,
         customerName: customerName ?? 'CONSUMIDOR FINAL',
@@ -154,6 +179,7 @@ export class FiscalInvoicingService {
         issuedAt: new Date(),
         isVoided: false,
         voidedReason: reason,
+        relatedInvoiceId: original?.id ?? null,
       },
     })
   }

@@ -8,6 +8,7 @@ import { ProductsService } from './products.service'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
+import { CurrentBranchId } from '../../common/decorators/current-branch.decorator'
 import {
   IsString, IsOptional, IsNumber, IsBoolean, IsInt, Min,
 } from 'class-validator'
@@ -52,6 +53,7 @@ export class ProductsController {
 
   @Get()
   findAll(
+    @CurrentBranchId() branchId: number,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('search') search?: string,
@@ -60,25 +62,30 @@ export class ProductsController {
     return this.productsService.findAll(
       +page, +limit, search,
       active !== undefined ? active === 'true' : undefined,
+      branchId,
     )
   }
 
   @Get('search')
-  search(@Query('q') q = '', @Query('active') active = 'true') {
-    return this.productsService.findBySearch(q, active === 'true')
+  search(
+    @CurrentBranchId() branchId: number,
+    @Query('q') q = '',
+    @Query('active') active = 'true',
+  ) {
+    return this.productsService.findBySearch(q, active === 'true', branchId)
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.productsService.findOne(id)
+  findOne(@Param('id', ParseIntPipe) id: number, @CurrentBranchId() branchId: number) {
+    return this.productsService.findOne(id, branchId)
   }
 
   @UseGuards(RolesGuard)
   @Roles('admin', 'supervisor', 'inventario')
   @Post()
-  create(@Body() dto: CreateProductDto) {
+  create(@Body() dto: CreateProductDto, @CurrentBranchId() branchId: number) {
     dto.taxRate = dto.taxRate ?? 0.15
-    return this.productsService.create(dto as any)
+    return this.productsService.create(dto as any, branchId)
   }
 
   @UseGuards(RolesGuard)
@@ -97,8 +104,8 @@ export class ProductsController {
   @Roles('admin', 'supervisor', 'inventario')
   @Post('import')
   @UseInterceptors(FileInterceptor('file'))
-  importCsv(@UploadedFile() file: Express.Multer.File) {
-    return this.productsService.importCsv(file)
+  importCsv(@UploadedFile() file: Express.Multer.File, @CurrentBranchId() branchId: number) {
+    return this.productsService.importCsv(file, branchId)
   }
 
   @Post('upload-image')

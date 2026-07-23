@@ -34,10 +34,12 @@ export class SalesService {
     from?: string; to?: string
     userId?: number; customerId?: number
     status?: string; paymentMethod?: string
+    branchId?: number
   }) {
-    const { page = 1, limit = 20, from, to, userId, customerId, status, paymentMethod } = filters
+    const { page = 1, limit = 20, from, to, userId, customerId, status, paymentMethod, branchId } = filters
     const skip = (page - 1) * limit
     const where: any = {}
+    if (branchId) where.branchId = branchId
     if (from || to) {
       where.createdAt = {}
       if (from) where.createdAt.gte = new Date(from)
@@ -55,6 +57,7 @@ export class SalesService {
           customer: true,
           user: { select: { id: true, name: true } },
           cashRegisterSession: true,
+          branch: { select: { id: true, code: true, name: true } },
         },
         skip,
         take: limit,
@@ -65,19 +68,24 @@ export class SalesService {
     return { data, total, page, limit }
   }
 
-  async findOne(id: number) {
-    const sale = await this.prisma.sale.findUnique({
-      where: { id },
+  async findOne(id: number, branchId?: number) {
+    const sale = await this.prisma.sale.findFirst({
+      where: { id, ...(branchId ? { branchId } : {}) },
       include: {
         customer: true,
         user: { select: { id: true, name: true } },
         items: { include: { product: true } },
         payments: true,
-        fiscalInvoice: { include: { caiRange: true } },
+        fiscalInvoices: { include: { caiRange: true }, orderBy: { issuedAt: 'asc' } },
+        branch: { select: { id: true, code: true, name: true } },
       },
     })
     if (!sale) throw new NotFoundException('Venta no encontrada')
-    return sale
+    const fiscalInvoice =
+      sale.fiscalInvoices.find((f) => f.documentType === 'FACTURA') ??
+      sale.fiscalInvoices[0] ??
+      null
+    return { ...sale, fiscalInvoice }
   }
 
   async create(
@@ -90,10 +98,22 @@ export class SalesService {
       notes?: string
     },
     userId: number,
+    branchId: number,
   ) {
     const settings = await this.settingsService.get()
 
-    // Calcular totales
+    const session = await this.prisma.cashRegisterSession.findFirst({
+      where: {
+        id: data.cashRegisterSessionId,
+        userId,
+        branchId,
+        status: 'ABIERTA',
+      },
+    })
+    if (!session) {
+      throw new BadRequestException('No hay una caja abierta válida en esta sucursal para tu usuario')
+    }
+
     let subtotal = 0
     let taxTotal = 0
     let discountTotal = 0
@@ -116,16 +136,21 @@ export class SalesService {
 
     const total = subtotal + taxTotal
 
-    // Generar número de recibo correlativo
-    const lastSale = await this.prisma.sale.findFirst({ orderBy: { id: 'desc' } })
-    const nextNum = (lastSale?.id ?? 0) + 1
-    const invoiceNumber = `REC-${String(nextNum).padStart(8, '0')}`
-
     return this.prisma.$transaction(async (tx) => {
-      // Crear venta
+      const seq = await tx.documentSequence.upsert({
+        where: { branchId_type: { branchId, type: 'RECIBO' } },
+        create: { branchId, type: 'RECIBO', nextNumber: 2 },
+        update: { nextNumber: { increment: 1 } },
+      })
+      const used = seq.nextNumber - 1
+      const branch = await tx.branch.findUnique({ where: { id: branchId } })
+      const code = (branch?.code ?? 'SUC').replace(/[^A-Z0-9]/gi, '').slice(0, 6) || 'SUC'
+      const invoiceNumber = `${code}-REC-${String(used).padStart(8, '0')}`
+
       const sale = await tx.sale.create({
         data: {
           invoiceNumber,
+          branchId,
           customerId: data.customerId || null,
           userId,
           cashRegisterSessionId: data.cashRegisterSessionId,
@@ -156,12 +181,10 @@ export class SalesService {
         include: { items: true, payments: true },
       })
 
-      // Decrementar stock
       for (const item of data.items) {
-        await this.inventoryService.decreaseStock(item.productId, item.quantity, userId, tx)
+        await this.inventoryService.decreaseStock(item.productId, branchId, item.quantity, userId, tx)
       }
 
-      // Emitir factura fiscal si está habilitado
       if (settings.fiscalInvoicingEnabled) {
         try {
           const customer = data.customerId
@@ -172,29 +195,28 @@ export class SalesService {
             customer?.name ?? 'CONSUMIDOR FINAL',
             customer?.identificationNumber ?? null,
             tx,
+            branchId,
           )
         } catch (err: any) {
-          // Si falla el CAI, la venta igual se completa pero sin número fiscal
           await tx.auditLog.create({
             data: {
               userId,
               action: 'CAI_ERROR',
               entity: 'Sale',
               entityId: sale.id,
-              details: { error: err.message },
+              details: { error: err.message, branchId },
             },
           })
         }
       }
 
-      // Audit log
       await tx.auditLog.create({
         data: {
           userId,
           action: 'SALE_CREATED',
           entity: 'Sale',
           entityId: sale.id,
-          details: { invoiceNumber, total, items: data.items.length },
+          details: { invoiceNumber, total, items: data.items.length, branchId },
         },
       })
 
@@ -202,12 +224,24 @@ export class SalesService {
     })
   }
 
-  async voidSale(id: number, reason: string, currentUser: { id: number; role: { name: string } }) {
-    const sale = await this.findOne(id)
+  async voidSale(
+    id: number,
+    reason: string,
+    currentUser: { id: number; role: { name: string } },
+    branchId: number,
+  ) {
+    const sale = await this.findOne(id, branchId)
     if (!['admin', 'supervisor'].includes(currentUser.role.name)) {
       throw new ForbiddenException('Solo supervisores y administradores pueden anular ventas')
     }
     if (sale.status === 'ANULADA') throw new BadRequestException('La venta ya está anulada')
+
+    const hasPartialReturns = sale.items.some((item) => Number(item.returnedQuantity) > 0)
+    if (hasPartialReturns) {
+      throw new BadRequestException(
+        'Esta venta tiene devoluciones parciales. Usa devolución del resto o procesa por ítems; no se puede anular completa para evitar doble stock.',
+      )
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const voided = await tx.sale.update({
@@ -220,16 +254,20 @@ export class SalesService {
         },
       })
 
-      // Revertir stock
       for (const item of sale.items) {
+        const qty = Number(item.quantity) - Number(item.returnedQuantity)
+        if (qty <= 0) continue
         await this.inventoryService.increaseStock(
-          item.productId, Number(item.quantity), currentUser.id, 'DEVOLUCION', tx,
+          item.productId, sale.branchId, qty, currentUser.id, 'DEVOLUCION', tx,
         )
+        await tx.saleItem.update({
+          where: { id: item.id },
+          data: { returnedQuantity: item.quantity },
+        })
       }
 
-      // Anular factura fiscal y emitir nota de crédito si aplica
       if (sale.fiscalInvoice) {
-        await this.fiscalInvoicingService.voidFiscalInvoice(id)
+        await this.fiscalInvoicingService.voidFiscalInvoice(id, tx)
         const settings = await this.settingsService.get()
         if (settings.fiscalInvoicingEnabled && sale.fiscalInvoice.documentType === 'FACTURA') {
           try {
@@ -268,8 +306,8 @@ export class SalesService {
     })
   }
 
-  async generateReceipt(id: number): Promise<Buffer> {
-    const sale = await this.findOne(id)
+  async generateReceipt(id: number, branchId?: number): Promise<Buffer> {
+    const sale = await this.findOne(id, branchId)
     const settings = await this.settingsService.get()
 
     return new Promise((resolve, reject) => {
@@ -385,8 +423,9 @@ export class SalesService {
   async sendReceiptByEmail(
     saleId: number,
     emailOverride?: string,
+    branchId?: number,
   ): Promise<{ message: string; sent: boolean; to: string }> {
-    const sale = await this.findOne(saleId)
+    const sale = await this.findOne(saleId, branchId)
     const settings = await this.settingsService.get()
     const to = (emailOverride || sale.customer?.email || '').trim()
 
@@ -396,7 +435,7 @@ export class SalesService {
       )
     }
 
-    const pdfBuffer = await this.generateReceipt(saleId)
+    const pdfBuffer = await this.generateReceipt(saleId, branchId)
     const currency = settings.currencySymbol ?? 'L.'
     const total = `${currency} ${Number(sale.total).toFixed(2)}`
 
@@ -444,6 +483,7 @@ export class SalesService {
     items: { productId: number; quantity: number }[],
     reason: string,
     currentUser: { id: number; role: { name: string } },
+    branchId: number,
   ) {
     if (!['admin', 'supervisor', 'cajero'].includes(currentUser.role.name)) {
       throw new ForbiddenException('No tienes permiso para procesar devoluciones')
@@ -451,15 +491,17 @@ export class SalesService {
     if (!items?.length) throw new BadRequestException('Debes indicar al menos un producto a devolver')
     if (!reason?.trim()) throw new BadRequestException('El motivo de devolución es obligatorio')
 
-    const sale = await this.findOne(saleId)
+    const sale = await this.findOne(saleId, branchId)
     if (sale.status === 'ANULADA') {
       throw new BadRequestException('La venta ya está anulada')
     }
 
     const returnedLines: {
+      saleItemId: number
       productId: number
       quantity: number
       refundAmount: number
+      newReturnedQuantity: number
     }[] = []
 
     for (const req of items) {
@@ -470,35 +512,45 @@ export class SalesService {
       if (req.quantity <= 0) {
         throw new BadRequestException('La cantidad a devolver debe ser mayor a cero')
       }
-      if (req.quantity > Number(saleItem.quantity)) {
+      const alreadyReturned = Number(saleItem.returnedQuantity)
+      const remaining = Number(saleItem.quantity) - alreadyReturned
+      if (req.quantity > remaining) {
         throw new BadRequestException(
-          `No puedes devolver más de ${saleItem.quantity} unidades del producto ${saleItem.product?.name ?? req.productId}`,
+          `Solo puedes devolver ${remaining} unidades restantes de ${saleItem.product?.name ?? req.productId} (ya devueltas: ${alreadyReturned})`,
         )
       }
 
       const unitTotal = Number(saleItem.subtotal) / Number(saleItem.quantity)
       returnedLines.push({
+        saleItemId: saleItem.id,
         productId: req.productId,
         quantity: req.quantity,
         refundAmount: unitTotal * req.quantity,
+        newReturnedQuantity: alreadyReturned + req.quantity,
       })
     }
 
     const refundTotal = returnedLines.reduce((s, l) => s + l.refundAmount, 0)
     const isFullReturn = sale.items.every((si) => {
       const ret = returnedLines.find((r) => r.productId === si.productId)
-      return ret && ret.quantity >= Number(si.quantity)
+      const afterReturn = Number(si.returnedQuantity) + (ret?.quantity ?? 0)
+      return afterReturn >= Number(si.quantity)
     })
 
     return this.prisma.$transaction(async (tx) => {
       for (const line of returnedLines) {
         await this.inventoryService.increaseStock(
           line.productId,
+          sale.branchId,
           line.quantity,
           currentUser.id,
           'DEVOLUCION',
           tx,
         )
+        await tx.saleItem.update({
+          where: { id: line.saleItemId },
+          data: { returnedQuantity: line.newReturnedQuantity },
+        })
       }
 
       if (isFullReturn) {
@@ -513,7 +565,7 @@ export class SalesService {
         })
 
         if (sale.fiscalInvoice) {
-          await this.fiscalInvoicingService.voidFiscalInvoice(saleId)
+          await this.fiscalInvoicingService.voidFiscalInvoice(saleId, tx)
           try {
             await this.fiscalInvoicingService.emitCreditNote(
               saleId,
@@ -554,7 +606,7 @@ export class SalesService {
               cashRegisterSessionId: sale.cashRegisterSessionId,
               userId: currentUser.id,
               type: 'EGRESO',
-              amount: refundTotal,
+              amount: -Math.abs(refundTotal),
               reason: `Devolución venta ${sale.invoiceNumber}: ${reason}`,
             },
           })
@@ -570,7 +622,9 @@ export class SalesService {
           details: {
             reason,
             refundTotal,
-            items: returnedLines,
+            items: returnedLines.map(({ productId, quantity, refundAmount }) => ({
+              productId, quantity, refundAmount,
+            })),
             invoiceNumber: sale.invoiceNumber,
           },
         },
@@ -580,7 +634,9 @@ export class SalesService {
         saleId,
         fullReturn: isFullReturn,
         refundTotal,
-        items: returnedLines,
+        items: returnedLines.map(({ productId, quantity, refundAmount }) => ({
+          productId, quantity, refundAmount,
+        })),
         message: isFullReturn
           ? 'Devolución total procesada. Venta anulada y stock restaurado.'
           : 'Devolución parcial procesada. Stock restaurado y egreso de caja registrado si la sesión está abierta.',

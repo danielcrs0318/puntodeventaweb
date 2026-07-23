@@ -6,24 +6,6 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('Iniciando seed de base de datos...')
 
-  const mainBranch = await prisma.branch.upsert({
-    where: { code: 'MATRIZ' },
-    create: {
-      code: 'MATRIZ',
-      name: 'Sucursal Matriz',
-      isMain: true,
-      isActive: true,
-      address: 'Tegucigalpa, Honduras',
-    },
-    update: { name: 'Sucursal Matriz', isMain: true, isActive: true },
-  })
-  await prisma.documentSequence.upsert({
-    where: { branchId_type: { branchId: mainBranch.id, type: 'RECIBO' } },
-    create: { branchId: mainBranch.id, type: 'RECIBO', nextNumber: 1 },
-    update: {},
-  })
-  console.log(`✓ Sucursal matriz: ${mainBranch.code} (id=${mainBranch.id})`)
-
   // Permisos
   const permissions = [
     'sales:create', 'sales:read', 'sales:void',
@@ -115,7 +97,7 @@ async function main() {
 
   // Usuario administrador por defecto
   const passwordHash = await bcrypt.hash('Admin1234!', 12)
-  const adminUser = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { email: 'admin@pos.hn' },
     create: {
       name: 'Administrador',
@@ -126,12 +108,7 @@ async function main() {
     },
     update: { passwordHash, roleId: adminRole.id },
   })
-  await prisma.userBranch.upsert({
-    where: { userId_branchId: { userId: adminUser.id, branchId: mainBranch.id } },
-    create: { userId: adminUser.id, branchId: mainBranch.id, isDefault: true },
-    update: { isDefault: true },
-  })
-  console.log('✓ Usuario admin creado: admin@pos.hn / Admin1234! (sucursal MATRIZ)')
+  console.log('✓ Usuario admin creado: admin@pos.hn / Admin1234!')
 
   // Configuración inicial
   await prisma.settings.upsert({
@@ -182,12 +159,7 @@ async function main() {
         data: { ...productData, taxRate: 0.15, unitType: 'UNIDAD' },
       })
       await prisma.inventory.create({
-        data: {
-          productId: product.id,
-          branchId: mainBranch.id,
-          quantity: stock,
-          minStockAlert: 10,
-        },
+        data: { productId: product.id, quantity: stock, minStockAlert: 10 },
       })
     }
   }

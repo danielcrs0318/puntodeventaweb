@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import { CurrentBranchId } from '../../common/decorators/current-branch.decorator'
 import { IsInt, IsNumber, IsString, Min } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -22,21 +23,28 @@ export class InventoryController {
   constructor(private inventoryService: InventoryService) {}
 
   @Get()
-  getStock() { return this.inventoryService.getStock() }
+  getStock(@CurrentBranchId() branchId: number) {
+    return this.inventoryService.getStock(branchId)
+  }
 
   @Get('movements')
   getMovements(
+    @CurrentBranchId() branchId: number,
     @Query('page') page = '1',
     @Query('limit') limit = '30',
     @Query('productId') productId?: string,
   ) {
-    return this.inventoryService.getMovements(+page, +limit, productId ? +productId : undefined)
+    return this.inventoryService.getMovements(branchId, +page, +limit, productId ? +productId : undefined)
   }
 
   @UseGuards(RolesGuard)
   @Roles('admin', 'supervisor', 'inventario')
   @Post('adjust')
-  adjust(@Body() dto: AdjustInventoryDto, @CurrentUser() user: any) {
-    return this.inventoryService.adjust(dto.productId, dto.quantity, dto.reason, user.id)
+  adjust(
+    @Body() dto: AdjustInventoryDto,
+    @CurrentUser() user: any,
+    @CurrentBranchId() branchId: number,
+  ) {
+    return this.inventoryService.adjust(dto.productId, branchId, dto.quantity, dto.reason, user.id)
   }
 }

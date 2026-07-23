@@ -9,6 +9,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import { CurrentBranchId } from '../../common/decorators/current-branch.decorator'
 import {
   IsInt, IsOptional, IsString, IsArray, ValidateNested, IsNumber, IsEnum,
 } from 'class-validator'
@@ -56,6 +57,7 @@ export class SalesController {
 
   @Get()
   findAll(
+    @CurrentBranchId() branchId: number,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('from') from?: string,
@@ -69,17 +71,26 @@ export class SalesController {
       page: +page, limit: +limit, from, to,
       userId: userId ? +userId : undefined,
       customerId: customerId ? +customerId : undefined,
-      status, paymentMethod,
+      status, paymentMethod, branchId,
     })
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) { return this.salesService.findOne(id) }
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentBranchId() branchId: number,
+  ) {
+    return this.salesService.findOne(id, branchId)
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateSaleDto, @CurrentUser() user: any) {
-    return this.salesService.create(dto, user.id)
+  create(
+    @Body() dto: CreateSaleDto,
+    @CurrentUser() user: any,
+    @CurrentBranchId() branchId: number,
+  ) {
+    return this.salesService.create(dto, user.id, branchId)
   }
 
   @UseGuards(RolesGuard) @Roles('admin', 'supervisor')
@@ -89,7 +100,10 @@ export class SalesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VoidSaleDto,
     @CurrentUser() user: any,
-  ) { return this.salesService.voidSale(id, dto.reason, user) }
+    @CurrentBranchId() branchId: number,
+  ) {
+    return this.salesService.voidSale(id, dto.reason, user, branchId)
+  }
 
   @Post(':id/return')
   @HttpCode(HttpStatus.OK)
@@ -97,8 +111,9 @@ export class SalesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ReturnSaleDto,
     @CurrentUser() user: any,
+    @CurrentBranchId() branchId: number,
   ) {
-    return this.salesService.returnItems(id, dto.items, dto.reason, user)
+    return this.salesService.returnItems(id, dto.items, dto.reason, user, branchId)
   }
 
   @Post(':id/send-receipt')
@@ -106,13 +121,18 @@ export class SalesController {
   sendReceipt(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SendReceiptDto,
+    @CurrentBranchId() branchId: number,
   ) {
-    return this.salesService.sendReceiptByEmail(id, dto.email)
+    return this.salesService.sendReceiptByEmail(id, dto.email, branchId)
   }
 
   @Get(':id/receipt')
-  async generateReceipt(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
-    const buffer = await this.salesService.generateReceipt(id)
+  async generateReceipt(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentBranchId() branchId: number,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.salesService.generateReceipt(id, branchId)
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="recibo-${id}.pdf"`,

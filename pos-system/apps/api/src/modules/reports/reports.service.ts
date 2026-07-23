@@ -10,41 +10,43 @@ export class ReportsService {
     private settingsService: SettingsService,
   ) {}
 
-  async getDashboard() {
+  async getDashboard(branchId?: number) {
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
     const weekStart = new Date()
     weekStart.setDate(weekStart.getDate() - 6)
     weekStart.setHours(0, 0, 0, 0)
+    const saleWhere = (extra: any = {}) => ({
+      ...extra,
+      ...(branchId ? { branchId } : {}),
+    })
 
-    const [salesTodayCount, totalToday, totalWeek, productsLowStock, topProducts, recentSales] =
+    const [salesTodayCount, totalToday, totalWeek, topProducts, recentSales] =
       await Promise.all([
-        this.prisma.sale.count({ where: { createdAt: { gte: todayStart }, status: 'COMPLETADA' } }),
+        this.prisma.sale.count({ where: saleWhere({ createdAt: { gte: todayStart }, status: 'COMPLETADA' }) }),
         this.prisma.sale.aggregate({
-          where: { createdAt: { gte: todayStart }, status: 'COMPLETADA' },
+          where: saleWhere({ createdAt: { gte: todayStart }, status: 'COMPLETADA' }),
           _sum: { total: true },
         }),
         this.prisma.sale.aggregate({
-          where: { createdAt: { gte: weekStart }, status: 'COMPLETADA' },
+          where: saleWhere({ createdAt: { gte: weekStart }, status: 'COMPLETADA' }),
           _sum: { total: true },
         }),
-        this.prisma.inventory.count({ where: { quantity: { lte: this.prisma.inventory.fields.minStockAlert as any } } }),
         this.prisma.saleItem.groupBy({
           by: ['productId'],
-          where: { sale: { createdAt: { gte: weekStart }, status: 'COMPLETADA' } },
+          where: { sale: saleWhere({ createdAt: { gte: weekStart }, status: 'COMPLETADA' }) },
           _sum: { quantity: true },
           orderBy: { _sum: { quantity: 'desc' } },
           take: 8,
         }),
         this.prisma.sale.findMany({
-          where: { status: 'COMPLETADA' },
+          where: saleWhere({ status: 'COMPLETADA' }),
           include: { customer: true },
           orderBy: { createdAt: 'desc' },
           take: 10,
         }),
       ])
 
-    // Enriquecer top productos
     const productIds = topProducts.map((p) => p.productId)
     const productNames = await this.prisma.product.findMany({
       where: { id: { in: productIds } },
@@ -52,13 +54,16 @@ export class ReportsService {
     })
     const nameMap = new Map(productNames.map((p) => [p.id, p.name]))
 
-    // Gráfica de ventas por día (últimos 7 días)
-    const salesChart = await this.buildSalesChart(weekStart)
+    const salesChart = await this.buildSalesChart(weekStart, branchId)
 
-    // Stock bajo real
-    const lowStockCount = await this.prisma.$queryRaw<[{ count: bigint }]>`
-      SELECT COUNT(*) as count FROM inventory WHERE quantity <= min_stock_alert
-    `
+    const lowStockCount = branchId
+      ? await this.prisma.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(*) as count FROM inventory
+          WHERE branch_id = ${branchId} AND quantity <= min_stock_alert
+        `
+      : await this.prisma.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(*) as count FROM inventory WHERE quantity <= min_stock_alert
+        `
 
     return {
       salesToday: salesTodayCount,
@@ -81,9 +86,13 @@ export class ReportsService {
     }
   }
 
-  private async buildSalesChart(from: Date) {
+  private async buildSalesChart(from: Date, branchId?: number) {
     const sales = await this.prisma.sale.findMany({
-      where: { createdAt: { gte: from }, status: 'COMPLETADA' },
+      where: {
+        createdAt: { gte: from },
+        status: 'COMPLETADA',
+        ...(branchId ? { branchId } : {}),
+      },
       select: { createdAt: true, total: true },
     })
     const byDay = new Map<string, number>()
@@ -101,8 +110,9 @@ export class ReportsService {
     return result
   }
 
-  async getSalesReport(from?: string, to?: string) {
+  async getSalesReport(from?: string, to?: string, branchId?: number) {
     const where: any = { status: 'COMPLETADA' }
+    if (branchId) where.branchId = branchId
     if (from || to) {
       where.createdAt = {}
       if (from) where.createdAt.gte = new Date(from)
@@ -118,15 +128,15 @@ export class ReportsService {
     return { sales, totalRevenue, totalTax, count: sales.length }
   }
 
-  async getProductsReport(from?: string, to?: string) {
-    const where: any = {}
+  async getProductsReport(from?: string, to?: string, branchId?: number) {
+    const saleFilter: any = { status: 'COMPLETADA' }
+    if (branchId) saleFilter.branchId = branchId
     if (from || to) {
-      where.sale = { createdAt: {}, status: 'COMPLETADA' }
-      if (from) where.sale.createdAt.gte = new Date(from)
-      if (to) where.sale.createdAt.lte = new Date(to)
-    } else {
-      where.sale = { status: 'COMPLETADA' }
+      saleFilter.createdAt = {}
+      if (from) saleFilter.createdAt.gte = new Date(from)
+      if (to) saleFilter.createdAt.lte = new Date(to)
     }
+    const where = { sale: saleFilter }
     const grouped = await this.prisma.saleItem.groupBy({
       by: ['productId'],
       where,
@@ -147,8 +157,9 @@ export class ReportsService {
     }))
   }
 
-  async getCashiersReport(from?: string, to?: string) {
+  async getCashiersReport(from?: string, to?: string, branchId?: number) {
     const where: any = { status: 'COMPLETADA' }
+    if (branchId) where.branchId = branchId
     if (from || to) {
       where.createdAt = {}
       if (from) where.createdAt.gte = new Date(from)
@@ -176,9 +187,10 @@ export class ReportsService {
     }))
   }
 
-  async getInventoryReport() {
+  async getInventoryReport(branchId?: number) {
     const inventory = await this.prisma.inventory.findMany({
-      include: { product: { include: { category: true } } },
+      where: branchId ? { branchId } : undefined,
+      include: { product: { include: { category: true } }, branch: true },
       orderBy: { product: { name: 'asc' } },
     })
     return inventory.map((inv) => ({
@@ -188,11 +200,13 @@ export class ReportsService {
       costValue: Number(inv.product.costPrice) * Number(inv.quantity),
       saleValue: Number(inv.product.salePrice) * Number(inv.quantity),
       status: Number(inv.quantity) <= 0 ? 'AGOTADO' : Number(inv.quantity) <= Number(inv.minStockAlert) ? 'BAJO' : 'OK',
+      branch: inv.branch,
     }))
   }
 
-  async getGrossProfitReport(from?: string, to?: string) {
+  async getGrossProfitReport(from?: string, to?: string, branchId?: number) {
     const where: any = { status: 'COMPLETADA' }
+    if (branchId) where.branchId = branchId
     if (from || to) {
       where.createdAt = {}
       if (from) where.createdAt.gte = new Date(from)
@@ -255,7 +269,7 @@ export class ReportsService {
     }
   }
 
-  async exportPdf(type: string, from?: string, to?: string): Promise<Buffer> {
+  async exportPdf(type: string, from?: string, to?: string, branchId?: number): Promise<Buffer> {
     const settings = await this.settingsService.get()
 
     return new Promise(async (resolve, reject) => {
@@ -273,7 +287,7 @@ export class ReportsService {
       doc.moveDown()
 
       if (type === 'ventas') {
-        const report = await this.getSalesReport(from, to)
+        const report = await this.getSalesReport(from, to, branchId)
         doc.fontSize(10).text(`Total ventas: ${report.count}`)
         doc.text(`Ingresos: L. ${Number(report.totalRevenue).toFixed(2)}`)
         doc.text(`ISV: L. ${Number(report.totalTax).toFixed(2)}`)
@@ -282,13 +296,13 @@ export class ReportsService {
           doc.fontSize(8).text(`${s.invoiceNumber} | ${s.customer?.name ?? 'Consumidor'} | L. ${Number(s.total).toFixed(2)} | ${s.status}`)
         }
       } else if (type === 'inventario') {
-        const inv = await this.getInventoryReport()
+        const inv = await this.getInventoryReport(branchId)
         doc.fontSize(10)
         for (const i of inv) {
           doc.fontSize(8).text(`${i.product.name} | Stock: ${i.quantity} | Valor: L. ${i.costValue.toFixed(2)} | ${i.status}`)
         }
       } else if (type === 'ganancia') {
-        const report = await this.getGrossProfitReport(from, to)
+        const report = await this.getGrossProfitReport(from, to, branchId)
         doc.fontSize(10).text(`Ingresos: L. ${report.revenue.toFixed(2)}`)
         doc.text(`Costo: L. ${report.cost.toFixed(2)}`)
         doc.text(`Ganancia bruta: L. ${report.profit.toFixed(2)} (${report.margin.toFixed(1)}%)`)
@@ -304,30 +318,30 @@ export class ReportsService {
     })
   }
 
-  async exportExcel(type: string, from?: string, to?: string): Promise<string> {
+  async exportExcel(type: string, from?: string, to?: string, branchId?: number): Promise<string> {
     if (type === 'ventas') {
-      const report = await this.getSalesReport(from, to)
+      const report = await this.getSalesReport(from, to, branchId)
       const header = 'Factura,Fecha,Cliente,Cajero,Total,Estado\n'
       const rows = report.sales.map((s) =>
         `${s.invoiceNumber},${s.createdAt.toISOString().slice(0, 10)},${s.customer?.name ?? 'Consumidor'},${(s as any).user?.name ?? ''},${Number(s.total).toFixed(2)},${s.status}`,
       )
       return header + rows.join('\n')
     } else if (type === 'inventario') {
-      const inv = await this.getInventoryReport()
+      const inv = await this.getInventoryReport(branchId)
       const header = 'SKU,Nombre,Stock,Costo Unitario,Valor Total,Estado\n'
       const rows = inv.map((i) =>
         `${i.product.sku},${i.product.name},${i.quantity},${Number(i.product.costPrice).toFixed(2)},${i.costValue.toFixed(2)},${i.status}`,
       )
       return header + rows.join('\n')
     } else if (type === 'productos') {
-      const prods = await this.getProductsReport(from, to)
+      const prods = await this.getProductsReport(from, to, branchId)
       const header = 'SKU,Nombre,Unidades Vendidas,Ingresos\n'
       const rows = prods.map((p) =>
         `${p.product?.sku ?? ''},${p.product?.name ?? ''},${p.quantitySold},${p.revenue.toFixed(2)}`,
       )
       return header + rows.join('\n')
     } else if (type === 'ganancia') {
-      const report = await this.getGrossProfitReport(from, to)
+      const report = await this.getGrossProfitReport(from, to, branchId)
       const header = 'SKU,Nombre,Cantidad,Ingresos,Costo,Ganancia\n'
       const rows = report.products.map(
         (p) =>
