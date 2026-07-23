@@ -1,0 +1,471 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ROLES Y PERMISOS
+// ─────────────────────────────────────────────
+
+model Role {
+  id          Int              @id @default(autoincrement())
+  name        String           @unique @db.VarChar(50)
+  description String?          @db.VarChar(255)
+  permissions RolePermission[]
+  users       User[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@map("roles")
+}
+
+model Permission {
+  id          Int              @id @default(autoincrement())
+  action      String           @db.VarChar(100) // e.g. "sales:create", "inventory:adjust"
+  description String?          @db.VarChar(255)
+  roles       RolePermission[]
+
+  @@unique([action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       Int        @map("role_id")
+  permissionId Int        @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ─────────────────────────────────────────────
+// USUARIOS
+// ─────────────────────────────────────────────
+
+model User {
+  id                   Int                   @id @default(autoincrement())
+  name                 String                @db.VarChar(150)
+  email                String                @unique @db.VarChar(255)
+  passwordHash         String                @map("password_hash") @db.VarChar(255)
+  roleId               Int                   @map("role_id")
+  role                 Role                  @relation(fields: [roleId], references: [id])
+  isActive             Boolean               @default(true) @map("is_active")
+  failedLoginAttempts  Int                   @default(0) @map("failed_login_attempts")
+  lockedUntil          DateTime?             @map("locked_until")
+  passwordResetToken   String?               @map("password_reset_token") @db.VarChar(255)
+  passwordResetExpires DateTime?             @map("password_reset_expires")
+  refreshToken         String?               @map("refresh_token") @db.Text
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  sales                Sale[]
+  cashRegisterSessions CashRegisterSession[]
+  cashMovements        CashMovement[]
+  inventoryMovements   InventoryMovement[]
+  purchases            Purchase[]
+  auditLogs            AuditLog[]
+
+  @@index([email])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// CATEGORÍAS
+// ─────────────────────────────────────────────
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(100)
+  description String?   @db.VarChar(255)
+  isActive    Boolean   @default(true) @map("is_active")
+  products    Product[]
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("categories")
+}
+
+// ─────────────────────────────────────────────
+// PRODUCTOS
+// ─────────────────────────────────────────────
+
+enum UnitType {
+  UNIDAD
+  KG
+  LB
+  LITRO
+  METRO
+  DOCENA
+  CAJA
+  PAQUETE
+}
+
+model Product {
+  id                 Int                 @id @default(autoincrement())
+  sku                String              @unique @db.VarChar(100)
+  barcode            String?             @unique @db.VarChar(100)
+  name               String              @db.VarChar(200)
+  description        String?             @db.Text
+  categoryId         Int?                @map("category_id")
+  category           Category?           @relation(fields: [categoryId], references: [id])
+  costPrice          Decimal             @map("cost_price") @db.Decimal(12, 2)
+  salePrice          Decimal             @map("sale_price") @db.Decimal(12, 2)
+  taxRate            Decimal             @default(0.15) @map("tax_rate") @db.Decimal(5, 4) // 0.15 = 15% ISV Honduras
+  imageUrl           String?             @map("image_url") @db.VarChar(500)
+  unitType           UnitType            @default(UNIDAD) @map("unit_type")
+  isActive           Boolean             @default(true) @map("is_active")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  inventory          Inventory?
+  inventoryMovements InventoryMovement[]
+  saleItems          SaleItem[]
+  purchaseItems      PurchaseItem[]
+
+  @@index([sku])
+  @@index([barcode])
+  @@index([name])
+  @@map("products")
+}
+
+// ─────────────────────────────────────────────
+// INVENTARIO
+// ─────────────────────────────────────────────
+
+model Inventory {
+  id            Int      @id @default(autoincrement())
+  productId     Int      @unique @map("product_id")
+  product       Product  @relation(fields: [productId], references: [id])
+  quantity      Decimal  @default(0) @db.Decimal(12, 3)
+  minStockAlert Decimal  @default(5) @map("min_stock_alert") @db.Decimal(12, 3)
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("inventory")
+}
+
+enum MovementType {
+  ENTRADA
+  SALIDA
+  AJUSTE
+  VENTA
+  DEVOLUCION
+  COMPRA
+}
+
+model InventoryMovement {
+  id        Int          @id @default(autoincrement())
+  productId Int          @map("product_id")
+  product   Product      @relation(fields: [productId], references: [id])
+  type      MovementType
+  quantity  Decimal      @db.Decimal(12, 3)
+  reason    String?      @db.VarChar(500)
+  userId    Int          @map("user_id")
+  user      User         @relation(fields: [userId], references: [id])
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  @@index([productId])
+  @@index([createdAt])
+  @@map("inventory_movements")
+}
+
+// ─────────────────────────────────────────────
+// PROVEEDORES
+// ─────────────────────────────────────────────
+
+model Supplier {
+  id          Int        @id @default(autoincrement())
+  name        String     @db.VarChar(200)
+  contactName String?    @map("contact_name") @db.VarChar(150)
+  phone       String?    @db.VarChar(30)
+  email       String?    @db.VarChar(255)
+  address     String?    @db.VarChar(500)
+  isActive    Boolean    @default(true) @map("is_active")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  purchases   Purchase[]
+
+  @@map("suppliers")
+}
+
+enum PurchaseStatus {
+  PENDIENTE
+  COMPLETADA
+  ANULADA
+}
+
+model Purchase {
+  id         Int            @id @default(autoincrement())
+  supplierId Int            @map("supplier_id")
+  supplier   Supplier       @relation(fields: [supplierId], references: [id])
+  userId     Int            @map("user_id")
+  user       User           @relation(fields: [userId], references: [id])
+  total      Decimal        @db.Decimal(12, 2)
+  status     PurchaseStatus @default(PENDIENTE)
+  notes      String?        @db.Text
+  createdAt  DateTime       @default(now()) @map("created_at")
+  items      PurchaseItem[]
+
+  @@index([createdAt])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         Int      @id @default(autoincrement())
+  purchaseId Int      @map("purchase_id")
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId  Int      @map("product_id")
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Decimal  @db.Decimal(12, 3)
+  unitCost   Decimal  @map("unit_cost") @db.Decimal(12, 2)
+  subtotal   Decimal  @db.Decimal(12, 2)
+
+  @@map("purchase_items")
+}
+
+// ─────────────────────────────────────────────
+// CLIENTES
+// ─────────────────────────────────────────────
+
+model Customer {
+  id                   Int      @id @default(autoincrement())
+  name                 String   @db.VarChar(200)
+  identificationNumber String?  @map("identification_number") @db.VarChar(50) // RTN o DNI
+  phone                String?  @db.VarChar(30)
+  email                String?  @db.VarChar(255)
+  address              String?  @db.VarChar(500)
+  creditLimit          Decimal  @default(0) @map("credit_limit") @db.Decimal(12, 2)
+  creditBalance        Decimal  @default(0) @map("credit_balance") @db.Decimal(12, 2)
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  sales                Sale[]
+
+  @@index([name])
+  @@index([identificationNumber])
+  @@map("customers")
+}
+
+// ─────────────────────────────────────────────
+// VENTAS
+// ─────────────────────────────────────────────
+
+enum SaleStatus {
+  PENDIENTE
+  COMPLETADA
+  ANULADA
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+  MIXTO
+}
+
+model Sale {
+  id                   Int                  @id @default(autoincrement())
+  invoiceNumber        String               @unique @map("invoice_number") @db.VarChar(50)
+  customerId           Int?                 @map("customer_id")
+  customer             Customer?            @relation(fields: [customerId], references: [id])
+  userId               Int                  @map("user_id")
+  user                 User                 @relation(fields: [userId], references: [id])
+  cashRegisterSessionId Int?                @map("cash_register_session_id")
+  cashRegisterSession  CashRegisterSession? @relation(fields: [cashRegisterSessionId], references: [id])
+  subtotal             Decimal              @db.Decimal(12, 2)
+  taxTotal             Decimal              @map("tax_total") @db.Decimal(12, 2)
+  discountTotal        Decimal              @default(0) @map("discount_total") @db.Decimal(12, 2)
+  total                Decimal              @db.Decimal(12, 2)
+  paymentMethod        PaymentMethod        @map("payment_method")
+  status               SaleStatus           @default(COMPLETADA)
+  voidReason           String?              @map("void_reason") @db.VarChar(500)
+  voidedById           Int?                 @map("voided_by_id")
+  voidedAt             DateTime?            @map("voided_at")
+  notes                String?              @db.Text
+  createdAt            DateTime             @default(now()) @map("created_at")
+  items                SaleItem[]
+  payments             SalePayment[]
+  fiscalInvoice        FiscalInvoice?
+
+  @@index([invoiceNumber])
+  @@index([createdAt])
+  @@index([customerId])
+  @@index([userId])
+  @@map("sales")
+}
+
+model SaleItem {
+  id        Int     @id @default(autoincrement())
+  saleId    Int     @map("sale_id")
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId Int     @map("product_id")
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Decimal @db.Decimal(12, 3)
+  unitPrice Decimal @map("unit_price") @db.Decimal(12, 2)
+  discount  Decimal @default(0) @db.Decimal(12, 2)
+  tax       Decimal @default(0) @db.Decimal(12, 2)
+  subtotal  Decimal @db.Decimal(12, 2)
+
+  @@map("sale_items")
+}
+
+model SalePayment {
+  id     Int           @id @default(autoincrement())
+  saleId Int           @map("sale_id")
+  sale   Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  method PaymentMethod
+  amount Decimal       @db.Decimal(12, 2)
+
+  @@map("sale_payments")
+}
+
+// ─────────────────────────────────────────────
+// CAJA (CASH REGISTER)
+// ─────────────────────────────────────────────
+
+enum SessionStatus {
+  ABIERTA
+  CERRADA
+}
+
+model CashRegisterSession {
+  id              Int            @id @default(autoincrement())
+  userId          Int            @map("user_id")
+  user            User           @relation(fields: [userId], references: [id])
+  openingAmount   Decimal        @map("opening_amount") @db.Decimal(12, 2)
+  closingAmount   Decimal?       @map("closing_amount") @db.Decimal(12, 2)
+  expectedAmount  Decimal?       @map("expected_amount") @db.Decimal(12, 2)
+  difference      Decimal?       @db.Decimal(12, 2)
+  openedAt        DateTime       @default(now()) @map("opened_at")
+  closedAt        DateTime?      @map("closed_at")
+  status          SessionStatus  @default(ABIERTA)
+  notes           String?        @db.Text
+  sales           Sale[]
+  cashMovements   CashMovement[]
+
+  @@index([userId])
+  @@index([openedAt])
+  @@map("cash_register_sessions")
+}
+
+enum CashMovementType {
+  INGRESO
+  EGRESO
+}
+
+model CashMovement {
+  id                    Int                 @id @default(autoincrement())
+  cashRegisterSessionId Int                 @map("cash_register_session_id")
+  cashRegisterSession   CashRegisterSession @relation(fields: [cashRegisterSessionId], references: [id])
+  type                  CashMovementType
+  amount                Decimal             @db.Decimal(12, 2)
+  reason                String              @db.VarChar(500)
+  userId                Int                 @map("user_id")
+  user                  User                @relation(fields: [userId], references: [id])
+  createdAt             DateTime            @default(now()) @map("created_at")
+
+  @@map("cash_movements")
+}
+
+// ─────────────────────────────────────────────
+// CONFIGURACIÓN DEL NEGOCIO
+// ─────────────────────────────────────────────
+
+model Settings {
+  id                      Int      @id @default(1)
+  businessName            String   @default("Mi Negocio") @map("business_name") @db.VarChar(200)
+  businessLogo            String?  @map("business_logo") @db.VarChar(500)
+  taxId                   String?  @map("tax_id") @db.VarChar(50) // RTN
+  currency                String   @default("HNL") @db.VarChar(10)
+  currencySymbol          String   @default("L.") @map("currency_symbol") @db.VarChar(10)
+  taxRateDefault          Decimal  @default(0.15) @map("tax_rate_default") @db.Decimal(5, 4)
+  invoiceFooterText       String?  @map("invoice_footer_text") @db.Text
+  address                 String?  @db.VarChar(500)
+  phone                   String?  @db.VarChar(30)
+  email                   String?  @db.VarChar(255)
+  fiscalInvoicingEnabled  Boolean  @default(false) @map("fiscal_invoicing_enabled")
+  lowStockThreshold       Int      @default(10) @map("low_stock_threshold")
+  caiAlertThreshold       Int      @default(50) @map("cai_alert_threshold") // facturas restantes
+  caiDaysAlertThreshold   Int      @default(15) @map("cai_days_alert_threshold")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+// ─────────────────────────────────────────────
+// FACTURACIÓN FISCAL CAI (Honduras — SAR)
+// ─────────────────────────────────────────────
+
+enum DocumentType {
+  FACTURA
+  NOTA_CREDITO
+  NOTA_DEBITO
+}
+
+model CaiRange {
+  id                Int             @id @default(autoincrement())
+  caiCode           String          @map("cai_code") @db.VarChar(100) // Número CAI emitido por SAR
+  documentType      DocumentType    @default(FACTURA) @map("document_type")
+  branchOfficeCode  String          @map("branch_office_code") @db.VarChar(10) // ej. "000"
+  posCode           String          @map("pos_code") @db.VarChar(10) // ej. "001"
+  rangeStart        Int             @map("range_start") // correlativo inicial autorizado
+  rangeEnd          Int             @map("range_end") // correlativo final autorizado
+  currentNumber     Int             @map("current_number") // siguiente correlativo a emitir
+  authorizationDate DateTime        @map("authorization_date") @db.Date
+  expirationDate    DateTime        @map("expiration_date") @db.Date
+  isActive          Boolean         @default(true) @map("is_active")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  fiscalInvoices    FiscalInvoice[]
+
+  @@index([caiCode])
+  @@index([isActive, documentType])
+  @@map("cai_ranges")
+}
+
+model FiscalInvoice {
+  id                Int          @id @default(autoincrement())
+  saleId            Int?         @unique @map("sale_id")
+  sale              Sale?        @relation(fields: [saleId], references: [id])
+  caiRangeId        Int          @map("cai_range_id")
+  caiRange          CaiRange     @relation(fields: [caiRangeId], references: [id])
+  fullInvoiceNumber String       @unique @map("full_invoice_number") @db.VarChar(50) // "000-001-01-00000001"
+  documentType      DocumentType @default(FACTURA) @map("document_type")
+  customerTaxId     String?      @map("customer_tax_id") @db.VarChar(50) // RTN del cliente
+  customerName      String?      @map("customer_name") @db.VarChar(200)
+  issuedAt          DateTime     @default(now()) @map("issued_at")
+  isVoided          Boolean      @default(false) @map("is_voided")
+  voidedReason      String?      @map("voided_reason") @db.VarChar(500)
+  relatedInvoiceId  Int?         @map("related_invoice_id") // para notas de crédito/débito
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  @@index([fullInvoiceNumber])
+  @@index([caiRangeId])
+  @@index([issuedAt])
+  @@map("fiscal_invoices")
+}
+
+// ─────────────────────────────────────────────
+// AUDITORÍA
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String   @db.VarChar(100) // e.g. "SALE_VOID", "INVENTORY_ADJUST"
+  entity    String   @db.VarChar(100) // e.g. "Sale", "Product"
+  entityId  Int?     @map("entity_id")
+  details   Json? // información adicional en JSON
+  ipAddress String?  @map("ip_address") @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
