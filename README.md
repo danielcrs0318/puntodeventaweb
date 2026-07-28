@@ -234,7 +234,7 @@ Bootstrap solo admin (una vez, desde tu PC contra Aiven):
 ```bash
 cd pos-system/apps/api
 # PowerShell
-$env:DATABASE_URL="mysql://USER:PASS@HOST:PORT/DB?sslaccept=strict"
+$env:DATABASE_URL="mysql://USER:PASS@HOST:PORT/DB?sslaccept=accept_invalid_certs"
 $env:ADMIN_PASSWORD="TuClaveSegura!"
 npx prisma db push
 npm run prisma:seed:prod

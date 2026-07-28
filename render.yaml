@@ -9,7 +9,7 @@ services:
     plan: free
     rootDir: pos-system/apps/api
     buildCommand: npm ci --include=dev && npx prisma generate && npm run build
-    startCommand: npx prisma db push && npm run start:prod
+    startCommand: npm run start:render
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
@@ -17,6 +17,8 @@ services:
       - key: PORT
         value: 10000
       # Obligatorias — configúralas en el dashboard de Render:
+      # DATABASE_URL de Aiven: mysql://USER:PASS@HOST:PORT/DB
+      # (sslaccept se normaliza solo; evita ssl-mode=REQUIRED / sslaccept=strict)
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET

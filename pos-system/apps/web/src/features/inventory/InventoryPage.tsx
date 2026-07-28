@@ -169,11 +169,11 @@ export default function InventoryPage() {
             />
             <div className="flex flex-wrap gap-2">
               {([
-                { label: 'Todos', value: '' as StockStatus },
+                { label: 'Todos', value: '' },
                 { label: 'Stock bajo', value: 'bajo' },
                 { label: 'Agotado', value: 'agotado' },
                 { label: 'OK', value: 'ok' },
-              ]).map((f) => (
+              ] as const satisfies ReadonlyArray<{ label: string; value: StockStatus }>).map((f) => (
                 <button
                   key={f.value || 'all'}
                   type="button"

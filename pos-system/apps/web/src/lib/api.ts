@@ -101,4 +101,4 @@ api.interceptors.response.use(
 )
 
 export default api
-export { API_BASE, resolveMediaUrl }
+export { API_BASE }

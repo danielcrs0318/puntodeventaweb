@@ -19,10 +19,10 @@ Usa solo `npm run prisma:seed:prod` una vez para crear permisos, roles y el admi
 2. Copia la **Service URI** y adapta el query string para Prisma:
 
 ```text
-mysql://USER:PASSWORD@HOST:PORT/DATABASE?sslaccept=strict
+mysql://USER:PASSWORD@HOST:PORT/DATABASE?sslaccept=accept_invalid_certs
 ```
 
-Importante: Aiven exige SSL. Sin `?sslaccept=strict` Prisma suele fallar al conectar.
+Importante: Aiven usa su propia CA. Con `sslaccept=strict` o `ssl-mode=REQUIRED` Prisma falla en Render (`certificate verify failed`). Usa `sslaccept=accept_invalid_certs` (la conexión sigue cifrada). El API también normaliza la URL al arrancar.
 
 3. Guarda esa URL como `DATABASE_URL` (la usarás en Render y al correr el seed local).
 
@@ -37,7 +37,7 @@ cd pos-system/apps/api
 npm install
 
 # Windows PowerShell
-$env:DATABASE_URL="mysql://USER:PASS@HOST:PORT/DB?sslaccept=strict"
+$env:DATABASE_URL="mysql://USER:PASS@HOST:PORT/DB?sslaccept=accept_invalid_certs"
 $env:ADMIN_EMAIL="tu@correo.com"
 $env:ADMIN_PASSWORD="ClaveSeguraLarga!"
 $env:ADMIN_NAME="Administrador"
@@ -49,7 +49,7 @@ npm run prisma:seed:prod
 
 ```bash
 # Linux / macOS
-export DATABASE_URL="mysql://USER:PASS@HOST:PORT/DB?sslaccept=strict"
+export DATABASE_URL="mysql://USER:PASS@HOST:PORT/DB?sslaccept=accept_invalid_certs"
 export ADMIN_EMAIL="tu@correo.com"
 export ADMIN_PASSWORD="ClaveSeguraLarga!"
 npx prisma db push
@@ -77,7 +77,7 @@ Si el admin ya existe, no se sobrescribe la contraseña.
 | Root Directory | `pos-system/apps/api` |
 | Runtime | Node |
 | Build Command | `npm ci --include=dev && npx prisma generate && npm run build` |
-| Start Command | `npx prisma db push && npm run start:prod` |
+| Start Command | `npm run start:render` |
 | Health Check Path | `/health` |
 
 ### Variables de entorno (Render)
@@ -85,7 +85,7 @@ Si el admin ya existe, no se sobrescribe la contraseña.
 | Variable | Ejemplo / notas |
 |----------|-----------------|
 | `NODE_ENV` | `production` |
-| `DATABASE_URL` | URI de Aiven con `?sslaccept=strict` |
+| `DATABASE_URL` | URI de Aiven con `?sslaccept=accept_invalid_certs` (no `strict` / no `ssl-mode`) |
 | `JWT_SECRET` | Aleatorio ≥ 24 caracteres (Render puede generarlo) |
 | `FRONTEND_URL` | `https://tu-app.vercel.app` (sin barra final) |
 | `JWT_EXPIRES_IN` | `15m` |
