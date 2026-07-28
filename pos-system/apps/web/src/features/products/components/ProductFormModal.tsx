@@ -202,13 +202,13 @@ export function ProductFormModal({ isOpen, onClose, product, onSuccess }: Produc
         {/* Tab: General */}
         {activeTab === 'general' && (
           <>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="SKU" placeholder="GEN-PROD-0001" error={errors.sku?.message} required {...register('sku')} />
               <Input label="Código de barras" placeholder="7890000000000" {...register('barcode')} />
             </div>
             <Input label="Nombre del producto" placeholder="Ej. Arroz Blanquita 1kg" error={errors.name?.message} required {...register('name')} />
             <Textarea label="Descripción" placeholder="Descripción opcional del producto..." rows={3} {...register('description')} />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 label="Categoría"
                 options={[
@@ -225,7 +225,7 @@ export function ProductFormModal({ isOpen, onClose, product, onSuccess }: Produc
         {/* Tab: Precios */}
         {activeTab === 'precios' && (
           <>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Precio de costo (L.)" type="number" step="0.01" min="0" error={errors.costPrice?.message} required {...register('costPrice')} />
               <Input label="Precio de venta (L.)" type="number" step="0.01" min="0.01" error={errors.salePrice?.message} required {...register('salePrice')} />
             </div>

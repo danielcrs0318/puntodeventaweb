@@ -9,6 +9,8 @@ export interface Column<T> {
   sortable?: boolean
   width?: string
   align?: 'left' | 'center' | 'right'
+  /** Ocultar en vista móvil de tarjetas */
+  hideOnMobile?: boolean
 }
 
 interface TableProps<T> {
@@ -22,6 +24,20 @@ interface TableProps<T> {
   sortOrder?: 'asc' | 'desc'
   onSort?: (key: string) => void
   onRowClick?: (row: T) => void
+  /** Ancho mínimo de la tabla (scroll horizontal si hace falta) */
+  minWidth?: string
+}
+
+function alignText(align?: 'left' | 'center' | 'right') {
+  if (align === 'right') return 'text-right'
+  if (align === 'center') return 'text-center'
+  return 'text-left'
+}
+
+function alignFlex(align?: 'left' | 'center' | 'right') {
+  if (align === 'right') return 'justify-end'
+  if (align === 'center') return 'justify-center'
+  return 'justify-start'
 }
 
 export function Table<T>({
@@ -35,6 +51,7 @@ export function Table<T>({
   sortOrder,
   onSort,
   onRowClick,
+  minWidth = '720px',
 }: TableProps<T>) {
   if (loading) {
     return (
@@ -56,6 +73,8 @@ export function Table<T>({
     )
   }
 
+  const mobileColumns = columns.filter((c) => !c.hideOnMobile)
+
   return (
     <>
       {/* Vista móvil: tarjetas */}
@@ -63,13 +82,13 @@ export function Table<T>({
         {data.map((row) => (
           <div
             key={keyExtractor(row)}
-            className={`card p-4 space-y-2 ${onRowClick ? 'cursor-pointer active:bg-bg-hover' : ''}`}
+            className={`card p-4 space-y-2.5 ${onRowClick ? 'cursor-pointer active:bg-bg-hover' : ''}`}
             onClick={onRowClick ? () => onRowClick(row) : undefined}
           >
-            {columns.map((col) => (
-              <div key={col.key} className="flex items-start justify-between gap-3 text-sm">
-                <span className="text-text-secondary shrink-0">{col.header}</span>
-                <span className={`text-text-primary text-right ${col.align === 'right' ? 'font-mono' : ''}`}>
+            {mobileColumns.map((col) => (
+              <div key={col.key} className="flex items-start justify-between gap-4 text-sm">
+                <span className="text-text-secondary shrink-0 font-medium">{col.header}</span>
+                <span className={`text-text-primary min-w-0 break-words ${alignText(col.align)}`}>
                   {col.render
                     ? col.render(row)
                     : String((row as Record<string, unknown>)[col.key] ?? '—')}
@@ -80,63 +99,68 @@ export function Table<T>({
         ))}
       </div>
 
-      {/* Vista desktop: tabla */}
+      {/* Vista desktop: tabla ancha con scroll */}
       <div className="table-container hidden md:block">
-      <table className="table">
-        <thead>
-          <tr>
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                style={{ width: col.width }}
-                className={col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : ''}
-              >
-                {col.sortable && onSort ? (
-                  <button
-                    onClick={() => onSort(col.key)}
-                    className="inline-flex items-center gap-1 hover:text-text-primary transition-colors"
-                  >
-                    {col.header}
-                    {sortBy === col.key ? (
-                      sortOrder === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
-                    ) : (
-                      <ChevronsUpDown size={14} className="opacity-40" />
-                    )}
-                  </button>
-                ) : (
-                  col.header
-                )}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((row) => (
-            <tr
-              key={keyExtractor(row)}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={onRowClick ? 'cursor-pointer' : ''}
-            >
+        <table className="table" style={{ minWidth }}>
+          <thead>
+            <tr>
               {columns.map((col) => (
-                <td
+                <th
                   key={col.key}
-                  className={
-                    col.align === 'right'
-                      ? 'text-right'
-                      : col.align === 'center'
-                      ? 'text-center'
-                      : ''
-                  }
+                  style={col.width ? { width: col.width, minWidth: col.width } : undefined}
+                  className={alignText(col.align)}
                 >
-                  {col.render
-                    ? col.render(row)
-                    : String((row as Record<string, unknown>)[col.key] ?? '—')}
-                </td>
+                  {col.sortable && onSort ? (
+                    <button
+                      type="button"
+                      onClick={() => onSort(col.key)}
+                      className={`inline-flex w-full items-center gap-1 hover:text-text-primary transition-colors ${alignFlex(col.align)}`}
+                    >
+                      <span>{col.header}</span>
+                      {sortBy === col.key ? (
+                        sortOrder === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                      ) : (
+                        <ChevronsUpDown size={14} className="opacity-40 shrink-0" />
+                      )}
+                    </button>
+                  ) : (
+                    <span className={`inline-flex w-full items-center ${alignFlex(col.align)}`}>
+                      {col.header}
+                    </span>
+                  )}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.map((row) => (
+              <tr
+                key={keyExtractor(row)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={onRowClick ? 'cursor-pointer' : ''}
+              >
+                {columns.map((col) => {
+                  const content = col.render
+                    ? col.render(row)
+                    : String((row as Record<string, unknown>)[col.key] ?? '—')
+                  const needsFlexAlign = col.align === 'center' || col.align === 'right'
+
+                  return (
+                    <td key={col.key} className={alignText(col.align)}>
+                      {needsFlexAlign ? (
+                        <div className={`flex w-full items-center ${alignFlex(col.align)}`}>
+                          {content}
+                        </div>
+                      ) : (
+                        content
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </>
   )

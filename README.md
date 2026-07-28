@@ -211,6 +211,58 @@ Si el API está en marcha, deténlo antes de `prisma generate` (Windows puede bl
 | No llegan correos | `RESEND_API_KEY`, dominio/remitente en Resend; revisa logs del API |
 | `data.map is not a function` | Respuesta paginada vs array; ya cubierto en Categorías |
 | Puerto ocupado | Cambia `PORT` (API) o `VITE_PORT` (web) |
+| Tras vender, la pestaña del POS se convierte en el PDF | Actualiza el frontend: el recibo debe abrirse en otra pestaña (ya corregido) |
+
+---
+
+## Despliegue a producción
+
+### 1. Backend
+
+```bash
+cd pos-system/apps/api
+cp .env.example .env.production
+# Edita: DATABASE_URL, JWT_SECRET (≥24 chars), FRONTEND_URL, RESEND_*, NODE_ENV=production
+npm ci
+npx prisma generate
+npx prisma db push   # o migraciones SQL si la BD ya existe
+npm run build
+NODE_ENV=production npm run start:prod
+```
+
+Checklist API:
+
+- `JWT_SECRET` fuerte (obligatorio; el arranque falla si es débil)
+- `FRONTEND_URL` = URL pública del POS (CORS)
+- `RESEND_API_KEY` si usas correos
+- Carpeta `uploads/` persistente (volumen en VPS/Docker)
+- Swagger desactivado salvo `ENABLE_SWAGGER=true`
+
+### 2. Frontend
+
+```bash
+cd pos-system/apps/web
+npm ci
+npm run build
+# Dist en: apps/web/dist
+```
+
+Con nginx (recomendado) **no** hace falta `VITE_API_BASE_URL`: el proxy `/api` y `/uploads` apunta al Nest. Plantilla: [`pos-system/deploy/nginx.conf.example`](./pos-system/deploy/nginx.conf.example).
+
+Si el API está en otro dominio:
+
+```bash
+# .env.production del web
+VITE_API_BASE_URL=https://api.tudominio.com
+npm run build
+```
+
+### 3. Post-despliegue
+
+1. Cambia la contraseña de `admin@pos.hn`
+2. Crea sucursales y asigna cajeros
+3. Prueba: login → abrir caja → venta → recibo en **pestaña nueva** (el POS no debe navegar al PDF)
+4. Cierre de caja y un reporte
 
 ---
 

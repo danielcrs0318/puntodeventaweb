@@ -6,19 +6,106 @@ import { Prisma } from '@prisma/client'
 export class InventoryService {
   constructor(private prisma: PrismaService) {}
 
-  getStock(branchId: number) {
-    return this.prisma.inventory.findMany({
-      where: { branchId },
-      include: { product: { include: { category: true } }, branch: true },
-      orderBy: { product: { name: 'asc' } },
-    })
+  async getStock(
+    branchId: number,
+    page = 1,
+    limit = 20,
+    search?: string,
+    stockStatus?: 'bajo' | 'agotado' | 'ok',
+  ) {
+    const skip = (page - 1) * limit
+    const searchTerm = search?.trim() || null
+
+    // Comparar quantity vs min_stock_alert requiere SQL (Prisma no compara columnas)
+    if (stockStatus) {
+      const statusSql =
+        stockStatus === 'agotado'
+          ? Prisma.sql`AND i.quantity <= 0`
+          : stockStatus === 'bajo'
+            ? Prisma.sql`AND i.quantity > 0 AND i.quantity <= i.min_stock_alert`
+            : Prisma.sql`AND i.quantity > i.min_stock_alert`
+
+      const searchSql = searchTerm
+        ? Prisma.sql`AND (p.name LIKE ${`%${searchTerm}%`} OR p.sku LIKE ${`%${searchTerm}%`} OR IFNULL(p.barcode, '') LIKE ${`%${searchTerm}%`})`
+        : Prisma.empty
+
+      const ids = await this.prisma.$queryRaw<Array<{ id: number }>>`
+        SELECT i.id FROM inventory i
+        INNER JOIN products p ON p.id = i.product_id
+        WHERE i.branch_id = ${branchId}
+        ${statusSql}
+        ${searchSql}
+        ORDER BY p.name ASC
+        LIMIT ${limit} OFFSET ${skip}
+      `
+      const totalRows = await this.prisma.$queryRaw<Array<{ total: bigint }>>`
+        SELECT COUNT(*) as total FROM inventory i
+        INNER JOIN products p ON p.id = i.product_id
+        WHERE i.branch_id = ${branchId}
+        ${statusSql}
+        ${searchSql}
+      `
+      const total = Number(totalRows[0]?.total ?? 0)
+      if (!ids.length) return { data: [], total, page, limit }
+
+      const data = await this.prisma.inventory.findMany({
+        where: { id: { in: ids.map((r) => r.id) } },
+        include: { product: { include: { category: true } }, branch: true },
+      })
+      const order = new Map(ids.map((r, idx) => [r.id, idx]))
+      data.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+      return { data, total, page, limit }
+    }
+
+    const where: Prisma.InventoryWhereInput = {
+      branchId,
+      ...(searchTerm
+        ? {
+            product: {
+              OR: [
+                { name: { contains: searchTerm } },
+                { sku: { contains: searchTerm } },
+                { barcode: { contains: searchTerm } },
+              ],
+            },
+          }
+        : {}),
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.inventory.findMany({
+        where,
+        include: { product: { include: { category: true } }, branch: true },
+        orderBy: { product: { name: 'asc' } },
+        skip,
+        take: limit,
+      }),
+      this.prisma.inventory.count({ where }),
+    ])
+    return { data, total, page, limit }
   }
 
-  async getMovements(branchId: number, page = 1, limit = 30, productId?: number) {
+  async getMovements(
+    branchId: number,
+    page = 1,
+    limit = 30,
+    productId?: number,
+    search?: string,
+  ) {
     const skip = (page - 1) * limit
     const where: Prisma.InventoryMovementWhereInput = {
       branchId,
       ...(productId ? { productId } : {}),
+      ...(search
+        ? {
+            product: {
+              OR: [
+                { name: { contains: search } },
+                { sku: { contains: search } },
+              ],
+            },
+          }
+        : {}),
     }
     const [data, total] = await Promise.all([
       this.prisma.inventoryMovement.findMany({

@@ -84,7 +84,7 @@ export function ToastContainer() {
 
   return (
     <div
-      className="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 w-full max-w-sm"
+      className="fixed z-[100] flex flex-col gap-3 w-[calc(100%-2rem)] max-w-sm left-4 right-4 bottom-20 md:left-auto md:right-6 md:bottom-6 md:w-full"
       aria-live="polite"
     >
       {items.map((item) => (

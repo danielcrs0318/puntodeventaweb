@@ -9,9 +9,24 @@ export class SuppliersService {
     private inventoryService: InventoryService,
   ) {}
 
-  findAll(active?: boolean) {
-    const where = active !== undefined ? { isActive: active } : {}
-    return this.prisma.supplier.findMany({ where, orderBy: { name: 'asc' } })
+  async findAll(page = 1, limit = 20, search?: string, active?: boolean) {
+    const skip = (page - 1) * limit
+    const where: any = {}
+    if (active !== undefined) where.isActive = active
+    if (search) {
+      where.OR = [
+        { name: { contains: search } },
+        { contactName: { contains: search } },
+        { phone: { contains: search } },
+        { email: { contains: search } },
+        { taxId: { contains: search } },
+      ]
+    }
+    const [data, total] = await Promise.all([
+      this.prisma.supplier.findMany({ where, orderBy: { name: 'asc' }, skip, take: limit }),
+      this.prisma.supplier.count({ where }),
+    ])
+    return { data, total, page, limit }
   }
 
   create(data: { name: string; contactName?: string; phone?: string; email?: string; address?: string; taxId?: string }) {
@@ -28,11 +43,27 @@ export class SuppliersService {
     return this.prisma.supplier.update({ where: { id }, data: { isActive: false } })
   }
 
-  async getPurchases(page = 1, limit = 20, supplierId?: number, branchId?: number) {
+  async getPurchases(
+    page = 1,
+    limit = 20,
+    supplierId?: number,
+    branchId?: number,
+    search?: string,
+    status?: string,
+  ) {
     const skip = (page - 1) * limit
     const where: any = {}
     if (supplierId) where.supplierId = supplierId
     if (branchId) where.branchId = branchId
+    if (status) where.status = status
+    if (search) {
+      const asId = Number(search.replace(/\D/g, ''))
+      where.OR = [
+        { supplier: { name: { contains: search } } },
+        { notes: { contains: search } },
+        ...(Number.isFinite(asId) && asId > 0 ? [{ id: asId }] : []),
+      ]
+    }
     const [data, total] = await Promise.all([
       this.prisma.purchase.findMany({
         where,

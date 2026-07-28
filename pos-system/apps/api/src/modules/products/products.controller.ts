@@ -9,6 +9,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentBranchId } from '../../common/decorators/current-branch.decorator'
+import { imageFileFilter } from '../../common/utils/image-file-filter'
 import {
   IsString, IsOptional, IsNumber, IsBoolean, IsInt, Min,
 } from 'class-validator'
@@ -108,8 +109,10 @@ export class ProductsController {
     return this.productsService.importCsv(file, branchId)
   }
 
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'supervisor', 'inventario')
   @Post('upload-image')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { fileFilter: imageFileFilter }))
   uploadImage(@UploadedFile() file: Express.Multer.File) {
     return this.productsService.uploadImage(file)
   }

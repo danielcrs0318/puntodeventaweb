@@ -166,6 +166,7 @@ export default function FiscalPage() {
 
       {/* Tabla de rangos */}
       <Table
+        minWidth="1100px"
         columns={[
           { key: 'caiCode', header: 'Código CAI' },
           { key: 'documentType', header: 'Tipo Documento', render: (r) => (
@@ -244,7 +245,7 @@ export default function FiscalPage() {
             </p>
           </div>
           <Input label="Código CAI (emitido por la SAR)" placeholder="A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6" error={errors.caiCode?.message} required {...register('caiCode')} />
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Select label="Tipo de Documento" options={[
               { value: 'FACTURA', label: 'Factura' },
               { value: 'NOTA_CREDITO', label: 'Nota de Crédito' },
@@ -253,11 +254,11 @@ export default function FiscalPage() {
             <Input label="Código Establecimiento" placeholder="000" maxLength={3} error={errors.branchOfficeCode?.message} required {...register('branchOfficeCode')} />
             <Input label="Código Punto Emisión" placeholder="001" maxLength={3} error={errors.posCode?.message} required {...register('posCode')} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Correlativo Inicial" type="number" min="1" error={errors.rangeStart?.message} required {...register('rangeStart')} />
             <Input label="Correlativo Final" type="number" min="1" error={errors.rangeEnd?.message} required {...register('rangeEnd')} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Fecha de Autorización" type="date" error={errors.authorizationDate?.message} required {...register('authorizationDate')} />
             <Input label="Fecha Límite de Emisión" type="date" error={errors.expirationDate?.message} required {...register('expirationDate')} />
           </div>

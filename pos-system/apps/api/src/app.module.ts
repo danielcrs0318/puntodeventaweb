@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { ThrottlerModule } from '@nestjs/throttler'
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { MulterModule } from '@nestjs/platform-express'
 import { ServeStaticModule } from '@nestjs/serve-static'
-import { APP_INTERCEPTOR } from '@nestjs/core'
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
 import { join, extname } from 'path'
 import { diskStorage } from 'multer'
 import { v4 as uuidv4 } from 'uuid'
@@ -28,13 +28,19 @@ import { BranchesModule } from './modules/branches/branches.module'
 import { BranchInterceptor } from './common/interceptors/branch.interceptor'
 
 const uploadsDir = join(process.cwd(), 'uploads')
+const nodeEnv = process.env.NODE_ENV ?? 'development'
+const envFiles = [
+  `.env.${nodeEnv}`,
+  '.env.development',
+  '.env',
+]
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env.development', '.env'] }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: envFiles }),
     ThrottlerModule.forRoot([
-      { name: 'short', ttl: 60_000, limit: 20 },
-      { name: 'medium', ttl: 600_000, limit: 100 },
+      { name: 'short', ttl: 60_000, limit: 60 },
+      { name: 'medium', ttl: 600_000, limit: 600 },
     ]),
     ServeStaticModule.forRoot({ rootPath: uploadsDir, serveRoot: '/uploads' }),
     MulterModule.register({
@@ -42,7 +48,7 @@ const uploadsDir = join(process.cwd(), 'uploads')
         destination: uploadsDir,
         filename: (_req, file, cb) => cb(null, `${uuidv4()}${extname(file.originalname)}`),
       }),
-      limits: { fileSize: 10 * 1024 * 1024 },
+      limits: { fileSize: 5 * 1024 * 1024 },
     }),
     PrismaModule,
     MailModule,
@@ -64,6 +70,7 @@ const uploadsDir = join(process.cwd(), 'uploads')
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: BranchInterceptor },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

@@ -14,18 +14,28 @@ export class AuditService {
     userId?: number
     from?: string
     to?: string
+    search?: string
   }) {
-    const { page = 1, limit = 30, action, entity, userId, from, to } = filters
+    const { page = 1, limit = 30, action, entity, userId, from, to, search } = filters
     const skip = (page - 1) * limit
     const where: Prisma.AuditLogWhereInput = {}
 
     if (action) where.action = { contains: action }
-    if (entity) where.entity = entity
+    if (entity) where.entity = { contains: entity }
     if (userId) where.userId = userId
     if (from || to) {
       where.createdAt = {}
       if (from) where.createdAt.gte = new Date(from)
       if (to) where.createdAt.lte = new Date(to)
+    }
+    if (search?.trim()) {
+      const q = search.trim()
+      where.OR = [
+        { action: { contains: q } },
+        { entity: { contains: q } },
+        { user: { name: { contains: q } } },
+        { user: { email: { contains: q } } },
+      ]
     }
 
     const [data, total] = await Promise.all([

@@ -110,7 +110,14 @@ export class ReportsService {
     return result
   }
 
-  async getSalesReport(from?: string, to?: string, branchId?: number) {
+  async getSalesReport(
+    from?: string,
+    to?: string,
+    branchId?: number,
+    page?: number,
+    limit?: number,
+    search?: string,
+  ) {
     const where: any = { status: 'COMPLETADA' }
     if (branchId) where.branchId = branchId
     if (from || to) {
@@ -118,17 +125,50 @@ export class ReportsService {
       if (from) where.createdAt.gte = new Date(from)
       if (to) where.createdAt.lte = new Date(to)
     }
-    const sales = await this.prisma.sale.findMany({
-      where,
-      include: { user: { select: { id: true, name: true } }, customer: true, payments: true },
-      orderBy: { createdAt: 'desc' },
-    })
-    const totalRevenue = sales.reduce((sum, s) => sum + Number(s.total), 0)
-    const totalTax = sales.reduce((sum, s) => sum + Number(s.taxTotal), 0)
-    return { sales, totalRevenue, totalTax, count: sales.length }
+    if (search?.trim()) {
+      const q = search.trim()
+      where.OR = [
+        { invoiceNumber: { contains: q } },
+        { customer: { name: { contains: q } } },
+        { user: { name: { contains: q } } },
+      ]
+    }
+
+    const paginate = page != null && limit != null
+    const skip = paginate ? (page - 1) * limit : 0
+    const take = paginate ? limit : 5000
+    const [sales, count, aggregates] = await Promise.all([
+      this.prisma.sale.findMany({
+        where,
+        include: { user: { select: { id: true, name: true } }, customer: true, payments: true },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.sale.count({ where }),
+      this.prisma.sale.aggregate({
+        where,
+        _sum: { total: true, taxTotal: true },
+      }),
+    ])
+
+    return {
+      sales,
+      totalRevenue: Number(aggregates._sum.total ?? 0),
+      totalTax: Number(aggregates._sum.taxTotal ?? 0),
+      count,
+      ...(paginate ? { page, limit } : {}),
+    }
   }
 
-  async getProductsReport(from?: string, to?: string, branchId?: number) {
+  async getProductsReport(
+    from?: string,
+    to?: string,
+    branchId?: number,
+    page = 1,
+    limit = 20,
+    search?: string,
+  ) {
     const saleFilter: any = { status: 'COMPLETADA' }
     if (branchId) saleFilter.branchId = branchId
     if (from || to) {
@@ -136,25 +176,49 @@ export class ReportsService {
       if (from) saleFilter.createdAt.gte = new Date(from)
       if (to) saleFilter.createdAt.lte = new Date(to)
     }
-    const where = { sale: saleFilter }
-    const grouped = await this.prisma.saleItem.groupBy({
-      by: ['productId'],
-      where,
-      _sum: { quantity: true, subtotal: true },
-      orderBy: { _sum: { quantity: 'desc' } },
-      take: 50,
-    })
+    const where: any = { sale: saleFilter }
+    if (search?.trim()) {
+      const q = search.trim()
+      where.product = {
+        OR: [
+          { name: { contains: q } },
+          { sku: { contains: q } },
+        ],
+      }
+    }
+
+    const skip = (page - 1) * limit
+    const [grouped, totalGroups] = await Promise.all([
+      this.prisma.saleItem.groupBy({
+        by: ['productId'],
+        where,
+        _sum: { quantity: true, subtotal: true },
+        orderBy: { _sum: { quantity: 'desc' } },
+        skip,
+        take: limit,
+      }),
+      this.prisma.saleItem.groupBy({
+        by: ['productId'],
+        where,
+      }),
+    ])
+    const total = totalGroups.length
     const ids = grouped.map((g) => g.productId)
     const products = await this.prisma.product.findMany({
       where: { id: { in: ids } },
       select: { id: true, name: true, sku: true },
     })
     const nameMap = new Map(products.map((p) => [p.id, p]))
-    return grouped.map((g) => ({
-      product: nameMap.get(g.productId),
-      quantitySold: Number(g._sum.quantity ?? 0),
-      revenue: Number(g._sum.subtotal ?? 0),
-    }))
+    return {
+      data: grouped.map((g) => ({
+        product: nameMap.get(g.productId),
+        quantitySold: Number(g._sum.quantity ?? 0),
+        revenue: Number(g._sum.subtotal ?? 0),
+      })),
+      total,
+      page,
+      limit,
+    }
   }
 
   async getCashiersReport(from?: string, to?: string, branchId?: number) {
@@ -187,13 +251,39 @@ export class ReportsService {
     }))
   }
 
-  async getInventoryReport(branchId?: number) {
-    const inventory = await this.prisma.inventory.findMany({
-      where: branchId ? { branchId } : undefined,
-      include: { product: { include: { category: true } }, branch: true },
-      orderBy: { product: { name: 'asc' } },
-    })
-    return inventory.map((inv) => ({
+  async getInventoryReport(
+    branchId?: number,
+    page?: number,
+    limit?: number,
+    search?: string,
+  ) {
+    const where: any = {}
+    if (branchId) where.branchId = branchId
+    if (search?.trim()) {
+      const q = search.trim()
+      where.product = {
+        OR: [
+          { name: { contains: q } },
+          { sku: { contains: q } },
+        ],
+      }
+    }
+
+    const paginate = page != null && limit != null
+    const skip = paginate ? (page - 1) * limit : 0
+    const take = paginate ? limit : 5000
+    const [inventory, total] = await Promise.all([
+      this.prisma.inventory.findMany({
+        where,
+        include: { product: { include: { category: true } }, branch: true },
+        orderBy: { product: { name: 'asc' } },
+        skip,
+        take,
+      }),
+      this.prisma.inventory.count({ where }),
+    ])
+
+    const data = inventory.map((inv) => ({
       product: inv.product,
       quantity: inv.quantity,
       minStockAlert: inv.minStockAlert,
@@ -202,9 +292,18 @@ export class ReportsService {
       status: Number(inv.quantity) <= 0 ? 'AGOTADO' : Number(inv.quantity) <= Number(inv.minStockAlert) ? 'BAJO' : 'OK',
       branch: inv.branch,
     }))
+
+    return { data, total, ...(paginate ? { page, limit } : {}) }
   }
 
-  async getGrossProfitReport(from?: string, to?: string, branchId?: number) {
+  async getGrossProfitReport(
+    from?: string,
+    to?: string,
+    branchId?: number,
+    page = 1,
+    limit = 20,
+    search?: string,
+  ) {
     const where: any = { status: 'COMPLETADA' }
     if (branchId) where.branchId = branchId
     if (from || to) {
@@ -255,7 +354,15 @@ export class ReportsService {
       }
     }
 
-    const products = Array.from(byProduct.values()).sort((a, b) => b.profit - a.profit)
+    let products = Array.from(byProduct.values()).sort((a, b) => b.profit - a.profit)
+    if (search?.trim()) {
+      const q = search.trim().toLowerCase()
+      products = products.filter(
+        (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q),
+      )
+    }
+    const total = products.length
+    const paged = products.slice((page - 1) * limit, page * limit)
     const profit = revenue - cost
     const margin = revenue > 0 ? (profit / revenue) * 100 : 0
 
@@ -265,7 +372,10 @@ export class ReportsService {
       profit,
       margin,
       salesCount: sales.length,
-      products,
+      products: paged,
+      total,
+      page,
+      limit,
     }
   }
 
@@ -281,7 +391,7 @@ export class ReportsService {
 
       doc.fontSize(18).font('Helvetica-Bold').text(settings.businessName ?? 'POS Honduras', { align: 'center' })
       doc.fontSize(12).font('Helvetica').text(
-        `Reporte: ${type.toUpperCase()} — ${from ?? 'inicio'} al ${to ?? 'hoy'}`,
+        `Reporte: ${type.toUpperCase()} — ${from || 'inicio'} al ${to || 'hoy'}`,
         { align: 'center' },
       )
       doc.moveDown()
@@ -293,16 +403,39 @@ export class ReportsService {
         doc.text(`ISV: L. ${Number(report.totalTax).toFixed(2)}`)
         doc.moveDown()
         for (const s of report.sales.slice(0, 100)) {
-          doc.fontSize(8).text(`${s.invoiceNumber} | ${s.customer?.name ?? 'Consumidor'} | L. ${Number(s.total).toFixed(2)} | ${s.status}`)
+          doc.fontSize(8).text(
+            `${s.invoiceNumber} | ${s.customer?.name ?? 'Consumidor'} | ${(s as any).user?.name ?? ''} | L. ${Number(s.total).toFixed(2)} | ${s.status}`,
+          )
+        }
+      } else if (type === 'productos') {
+        const prods = await this.getProductsReport(from, to, branchId, 1, 500)
+        doc.fontSize(10).text(`Productos listados: ${prods.total}`)
+        doc.moveDown()
+        for (const p of prods.data.slice(0, 100)) {
+          doc.fontSize(8).text(
+            `${p.product?.sku ?? ''} | ${p.product?.name ?? ''} | Cant: ${p.quantitySold} | L. ${p.revenue.toFixed(2)}`,
+          )
+        }
+      } else if (type === 'cajeros') {
+        const cashiers = await this.getCashiersReport(from, to, branchId)
+        doc.fontSize(10).text(`Cajeros: ${cashiers.length}`)
+        doc.moveDown()
+        for (const c of cashiers) {
+          doc.fontSize(8).text(
+            `${c.userName} | Ventas: ${c.salesCount} | Total: L. ${c.totalRevenue.toFixed(2)} | Promedio: L. ${c.average.toFixed(2)}`,
+          )
         }
       } else if (type === 'inventario') {
         const inv = await this.getInventoryReport(branchId)
-        doc.fontSize(10)
-        for (const i of inv) {
-          doc.fontSize(8).text(`${i.product.name} | Stock: ${i.quantity} | Valor: L. ${i.costValue.toFixed(2)} | ${i.status}`)
+        doc.fontSize(10).text(`Productos en inventario: ${inv.total}`)
+        doc.moveDown()
+        for (const i of inv.data.slice(0, 150)) {
+          doc.fontSize(8).text(
+            `${i.product.sku} | ${i.product.name} | Stock: ${i.quantity} | Valor: L. ${i.costValue.toFixed(2)} | ${i.status}`,
+          )
         }
       } else if (type === 'ganancia') {
-        const report = await this.getGrossProfitReport(from, to, branchId)
+        const report = await this.getGrossProfitReport(from, to, branchId, 1, 500)
         doc.fontSize(10).text(`Ingresos: L. ${report.revenue.toFixed(2)}`)
         doc.text(`Costo: L. ${report.cost.toFixed(2)}`)
         doc.text(`Ganancia bruta: L. ${report.profit.toFixed(2)} (${report.margin.toFixed(1)}%)`)
@@ -312,6 +445,8 @@ export class ReportsService {
             `${p.sku} | ${p.name} | Cant: ${p.quantity} | Ganancia: L. ${p.profit.toFixed(2)}`,
           )
         }
+      } else {
+        doc.fontSize(10).text('Tipo de reporte no reconocido. Usa: ventas, productos, cajeros, inventario o ganancia.')
       }
 
       doc.end()
@@ -319,35 +454,87 @@ export class ReportsService {
   }
 
   async exportExcel(type: string, from?: string, to?: string, branchId?: number): Promise<string> {
+    const escape = (v: unknown) => {
+      const s = String(v ?? '')
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"`
+        : s
+    }
+
     if (type === 'ventas') {
       const report = await this.getSalesReport(from, to, branchId)
       const header = 'Factura,Fecha,Cliente,Cajero,Total,Estado\n'
       const rows = report.sales.map((s) =>
-        `${s.invoiceNumber},${s.createdAt.toISOString().slice(0, 10)},${s.customer?.name ?? 'Consumidor'},${(s as any).user?.name ?? ''},${Number(s.total).toFixed(2)},${s.status}`,
+        [
+          escape(s.invoiceNumber),
+          s.createdAt.toISOString().slice(0, 10),
+          escape(s.customer?.name ?? 'Consumidor'),
+          escape((s as any).user?.name ?? ''),
+          Number(s.total).toFixed(2),
+          s.status,
+        ].join(','),
       )
       return header + rows.join('\n')
-    } else if (type === 'inventario') {
+    }
+    if (type === 'inventario') {
       const inv = await this.getInventoryReport(branchId)
       const header = 'SKU,Nombre,Stock,Costo Unitario,Valor Total,Estado\n'
-      const rows = inv.map((i) =>
-        `${i.product.sku},${i.product.name},${i.quantity},${Number(i.product.costPrice).toFixed(2)},${i.costValue.toFixed(2)},${i.status}`,
+      const rows = inv.data.map((i) =>
+        [
+          escape(i.product.sku),
+          escape(i.product.name),
+          i.quantity,
+          Number(i.product.costPrice).toFixed(2),
+          i.costValue.toFixed(2),
+          i.status,
+        ].join(','),
       )
       return header + rows.join('\n')
-    } else if (type === 'productos') {
-      const prods = await this.getProductsReport(from, to, branchId)
+    }
+    if (type === 'productos') {
+      const prods = await this.getProductsReport(from, to, branchId, 1, 5000)
       const header = 'SKU,Nombre,Unidades Vendidas,Ingresos\n'
-      const rows = prods.map((p) =>
-        `${p.product?.sku ?? ''},${p.product?.name ?? ''},${p.quantitySold},${p.revenue.toFixed(2)}`,
+      const rows = prods.data.map((p) =>
+        [
+          escape(p.product?.sku ?? ''),
+          escape(p.product?.name ?? ''),
+          p.quantitySold,
+          p.revenue.toFixed(2),
+        ].join(','),
       )
       return header + rows.join('\n')
-    } else if (type === 'ganancia') {
-      const report = await this.getGrossProfitReport(from, to, branchId)
-      const header = 'SKU,Nombre,Cantidad,Ingresos,Costo,Ganancia\n'
-      const rows = report.products.map(
-        (p) =>
-          `${p.sku},${p.name},${p.quantity},${p.revenue.toFixed(2)},${p.cost.toFixed(2)},${p.profit.toFixed(2)}`,
+    }
+    if (type === 'cajeros') {
+      const cashiers = await this.getCashiersReport(from, to, branchId)
+      const header = 'Cajero,Ventas,Total Vendido,Promedio\n'
+      const rows = cashiers.map((c) =>
+        [
+          escape(c.userName),
+          c.salesCount,
+          c.totalRevenue.toFixed(2),
+          c.average.toFixed(2),
+        ].join(','),
       )
-      return `RESUMEN,Ingresos,${report.revenue.toFixed(2)},Costo,${report.cost.toFixed(2)},Ganancia,${report.profit.toFixed(2)}\n` + header + rows.join('\n')
+      return header + rows.join('\n')
+    }
+    if (type === 'ganancia') {
+      const report = await this.getGrossProfitReport(from, to, branchId, 1, 5000)
+      const header = 'SKU,Nombre,Cantidad,Ingresos,Costo,Ganancia\n'
+      const rows = report.products.map((p) =>
+        [
+          escape(p.sku),
+          escape(p.name),
+          p.quantity,
+          p.revenue.toFixed(2),
+          p.cost.toFixed(2),
+          p.profit.toFixed(2),
+        ].join(','),
+      )
+      return (
+        `RESUMEN,Ingresos,${report.revenue.toFixed(2)},Costo,${report.cost.toFixed(2)},Ganancia,${report.profit.toFixed(2)}\n` +
+        header +
+        rows.join('\n')
+      )
     }
     return 'tipo,de,reporte\n'
   }

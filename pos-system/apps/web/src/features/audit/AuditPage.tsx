@@ -7,15 +7,19 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Pagination } from '@/components/ui/Pagination'
 import { formatDateTime } from '@/lib/utils'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
 const PAGE_SIZE = 30
 
 export default function AuditPage() {
   const [page, setPage] = useState(1)
+  const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ action: '', entity: '', from: '', to: '' })
+  const debouncedSearch = useDebouncedValue(search)
 
   const buildQuery = () => {
     const p = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) })
+    if (debouncedSearch) p.set('search', debouncedSearch)
     if (filters.action) p.set('action', filters.action)
     if (filters.entity) p.set('entity', filters.entity)
     if (filters.from) p.set('from', filters.from)
@@ -24,7 +28,7 @@ export default function AuditPage() {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['audit', page, filters],
+    queryKey: ['audit', page, filters, debouncedSearch],
     queryFn: async () => (await api.get(`/audit?${buildQuery()}`)).data,
   })
 
@@ -43,17 +47,25 @@ export default function AuditPage() {
       <div className="card mb-5">
         <div className="flex flex-wrap items-end gap-3">
           <Input
+            label="Buscar"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+            placeholder="Acción, entidad o usuario..."
+            leftIcon={<Search size={14} />}
+            className="w-full sm:min-w-[220px]"
+            fullWidth={false}
+          />
+          <Input
             label="Acción"
             value={filters.action}
-            onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
+            onChange={(e) => { setFilters((f) => ({ ...f, action: e.target.value })); setPage(1) }}
             placeholder="LOGIN, SALE_VOIDED..."
-            leftIcon={<Search size={14} />}
             fullWidth={false}
           />
           <Input
             label="Entidad"
             value={filters.entity}
-            onChange={(e) => setFilters((f) => ({ ...f, entity: e.target.value }))}
+            onChange={(e) => { setFilters((f) => ({ ...f, entity: e.target.value })); setPage(1) }}
             placeholder="Sale, User, Inventory..."
             fullWidth={false}
           />
@@ -61,20 +73,21 @@ export default function AuditPage() {
             label="Desde"
             type="date"
             value={filters.from}
-            onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))}
+            onChange={(e) => { setFilters((f) => ({ ...f, from: e.target.value })); setPage(1) }}
             fullWidth={false}
           />
           <Input
             label="Hasta"
             type="date"
             value={filters.to}
-            onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))}
+            onChange={(e) => { setFilters((f) => ({ ...f, to: e.target.value })); setPage(1) }}
             fullWidth={false}
           />
           <Button
             variant="secondary"
             onClick={() => {
               setFilters({ action: '', entity: '', from: '', to: '' })
+              setSearch('')
               setPage(1)
             }}
           >
@@ -84,6 +97,7 @@ export default function AuditPage() {
       </div>
 
       <Table
+        minWidth="900px"
         columns={[
           {
             key: 'createdAt',

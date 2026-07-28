@@ -124,7 +124,7 @@ export default function SuppliersPage() {
       {tab === 'proveedores' && (
         <>
           <div className="mb-4">
-            <Input placeholder="Buscar proveedor..." value={search} onChange={(e) => setSearch(e.target.value)} leftIcon={<Search size={16} />} className="max-w-xs" fullWidth={false} />
+            <Input placeholder="Buscar proveedor..." value={search} onChange={(e) => setSearch(e.target.value)} leftIcon={<Search size={16} />} className="w-full sm:max-w-xs" />
           </div>
           <Table
             columns={[
@@ -148,6 +148,7 @@ export default function SuppliersPage() {
       {tab === 'compras' && (
         <>
           <Table
+            minWidth="900px"
             columns={[
               { key: 'id', header: 'N° Orden', render: (p) => <span className="font-mono">OC-{String(p.id).padStart(6, '0')}</span> },
               { key: 'createdAt', header: 'Fecha', render: (p) => formatDate(p.createdAt) },
@@ -176,7 +177,7 @@ export default function SuppliersPage() {
         <div className="space-y-4">
           <Input label="Nombre del proveedor" required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
           <Input label="Contacto" value={form.contactName} onChange={(e) => setForm((f) => ({ ...f, contactName: e.target.value }))} />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Teléfono" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
             <Input label="Correo" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
           </div>
@@ -201,7 +202,7 @@ export default function SuppliersPage() {
               <Button variant="ghost" size="sm" leftIcon={<Plus size={14} />} onClick={addPurchaseItem}>Agregar</Button>
             </div>
             {purchaseItems.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-4 gap-2 p-2 bg-bg-elevated rounded-lg border border-border-subtle">
+              <div key={idx} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 p-2 bg-bg-elevated rounded-lg border border-border-subtle">
                 <Select options={[{ value: '0', label: 'Producto...' }, ...allProducts.map((p: any) => ({ value: String(p.id), label: p.name }))]}
                   value={String(item.productId)}
                   onChange={(e) => setPurchaseItems((prev) => prev.map((i, j) => j === idx ? { ...i, productId: Number(e.target.value) } : i))} />

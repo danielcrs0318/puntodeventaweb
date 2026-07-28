@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Printer, XCircle, Receipt, Eye, Mail, RotateCcw } from 'lucide-react'
+import { Printer, XCircle, Receipt, Eye, Mail, RotateCcw, Search } from 'lucide-react'
 import api from '@/lib/api'
 import { Table } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
@@ -14,11 +14,13 @@ import { formatCurrency, formatDateTime, statusLabel, statusClass, paymentMethod
 import { useAuthStore } from '@/store/authStore'
 import { Textarea } from '@/components/ui/Textarea'
 import { getApiErrorMessage } from '@/lib/errors'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
 const PAGE_SIZE = 20
 
 export default function SalesPage() {
   const [page, setPage] = useState(1)
+  const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ from: '', to: '', status: '', paymentMethod: '' })
   const [detailSale, setDetailSale] = useState<any>(null)
   const [voidSale, setVoidSale] = useState<any>(null)
@@ -30,9 +32,11 @@ export default function SalesPage() {
   const [returnQtys, setReturnQtys] = useState<Record<number, number>>({})
   const { user } = useAuthStore()
   const qc = useQueryClient()
+  const debouncedSearch = useDebouncedValue(search)
 
   const buildQuery = () => {
     const p = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) })
+    if (debouncedSearch) p.set('search', debouncedSearch)
     if (filters.from) p.set('from', filters.from)
     if (filters.to) p.set('to', filters.to)
     if (filters.status) p.set('status', filters.status)
@@ -41,7 +45,7 @@ export default function SalesPage() {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sales', page, filters],
+    queryKey: ['sales', page, filters, debouncedSearch],
     queryFn: async () => (await api.get(`/sales?${buildQuery()}`)).data,
   })
   const sales: any[] = data?.data ?? []
@@ -125,23 +129,33 @@ export default function SalesPage() {
 
       <div className="card mb-5">
         <div className="flex flex-wrap items-end gap-3">
+          <Input
+            label="Buscar"
+            placeholder="Factura, cliente o cajero..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+            leftIcon={<Search size={16} />}
+            className="w-full sm:min-w-[220px]"
+            fullWidth={false}
+          />
           <Input label="Desde" type="date" value={filters.from}
-            onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))} fullWidth={false} />
+            onChange={(e) => { setFilters((f) => ({ ...f, from: e.target.value })); setPage(1) }} fullWidth={false} />
           <Input label="Hasta" type="date" value={filters.to}
-            onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))} fullWidth={false} />
+            onChange={(e) => { setFilters((f) => ({ ...f, to: e.target.value })); setPage(1) }} fullWidth={false} />
           <Select label="Estado" value={filters.status}
-            onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
+            onChange={(e) => { setFilters((f) => ({ ...f, status: e.target.value })); setPage(1) }}
             options={[{ value: '', label: 'Todos' }, { value: 'COMPLETADA', label: 'Completada' }, { value: 'ANULADA', label: 'Anulada' }]} />
           <Select label="Método de Pago" value={filters.paymentMethod}
-            onChange={(e) => setFilters((f) => ({ ...f, paymentMethod: e.target.value }))}
+            onChange={(e) => { setFilters((f) => ({ ...f, paymentMethod: e.target.value })); setPage(1) }}
             options={[{ value: '', label: 'Todos' }, { value: 'EFECTIVO', label: 'Efectivo' }, { value: 'TARJETA', label: 'Tarjeta' }, { value: 'MIXTO', label: 'Mixto' }, { value: 'TRANSFERENCIA', label: 'Transferencia' }]} />
-          <Button variant="secondary" onClick={() => setFilters({ from: '', to: '', status: '', paymentMethod: '' })}>
+          <Button variant="secondary" onClick={() => { setFilters({ from: '', to: '', status: '', paymentMethod: '' }); setSearch(''); setPage(1) }}>
             Limpiar
           </Button>
         </div>
       </div>
 
       <Table
+        minWidth="980px"
         columns={[
           { key: 'invoiceNumber', header: 'N° Factura', render: (s) => (
             <button className="font-mono text-accent-light hover:underline" onClick={() => setDetailSale(s)}>{s.invoiceNumber}</button>
@@ -181,7 +195,7 @@ export default function SalesPage() {
         title={`Detalle — ${saleDetail?.invoiceNumber ?? ''}`} size="lg">
         {saleDetail && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div><p className="text-text-secondary">Fecha</p><p className="font-medium">{formatDateTime(saleDetail.createdAt)}</p></div>
               <div><p className="text-text-secondary">Estado</p><Badge variant={statusClass(saleDetail.status)}>{statusLabel(saleDetail.status)}</Badge></div>
               <div><p className="text-text-secondary">Cliente</p><p className="font-medium">{saleDetail.customer?.name ?? 'Consumidor Final'}</p></div>
@@ -192,7 +206,8 @@ export default function SalesPage() {
               )}
             </div>
             <hr className="border-border-subtle" />
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full text-sm min-w-[320px]">
               <thead><tr className="text-text-secondary text-xs border-b border-border-subtle">
                 <th className="text-left pb-2">Producto</th>
                 <th className="text-center pb-2">Cant.</th>
@@ -210,6 +225,7 @@ export default function SalesPage() {
                 ))}
               </tbody>
             </table>
+            </div>
             <div className="space-y-1 text-sm text-right">
               <p>Subtotal: {formatCurrency(saleDetail.subtotal)}</p>
               {Number(saleDetail.discountTotal) > 0 && <p className="text-red-400">Descuento: -{formatCurrency(saleDetail.discountTotal)}</p>}
@@ -306,7 +322,8 @@ export default function SalesPage() {
               Indica las cantidades a devolver. El stock se reingresa automáticamente.
               Si devuelves todos los productos, la venta se anula.
             </p>
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full text-sm min-w-[280px]">
               <thead>
                 <tr className="text-text-secondary text-xs border-b border-border-subtle">
                   <th className="text-left pb-2">Producto</th>
@@ -338,6 +355,7 @@ export default function SalesPage() {
                 ))}
               </tbody>
             </table>
+            </div>
             <Textarea
               label="Motivo de devolución"
               required

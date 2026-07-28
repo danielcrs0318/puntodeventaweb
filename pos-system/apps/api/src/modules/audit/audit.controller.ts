@@ -22,6 +22,7 @@ export class AuditController {
     @Query('userId') userId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('search') search?: string,
   ) {
     return this.auditService.findAll({
       page: +page,
@@ -31,6 +32,7 @@ export class AuditController {
       userId: userId ? +userId : undefined,
       from,
       to,
+      search,
     })
   }
 }

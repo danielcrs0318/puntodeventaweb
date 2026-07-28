@@ -45,8 +45,18 @@ export class SuppliersController {
   constructor(private suppliersService: SuppliersService) {}
 
   @Get()
-  findAll(@Query('active') active?: string) {
-    return this.suppliersService.findAll(active !== undefined ? active === 'true' : undefined)
+  findAll(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('search') search?: string,
+    @Query('active') active?: string,
+  ) {
+    return this.suppliersService.findAll(
+      +page,
+      +limit,
+      search,
+      active !== undefined ? active === 'true' : undefined,
+    )
   }
 
   @UseGuards(RolesGuard) @Roles('admin', 'supervisor', 'inventario')
@@ -64,8 +74,17 @@ export class SuppliersController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('supplierId') supplierId?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
   ) {
-    return this.suppliersService.getPurchases(+page, +limit, supplierId ? +supplierId : undefined, branchId)
+    return this.suppliersService.getPurchases(
+      +page,
+      +limit,
+      supplierId ? +supplierId : undefined,
+      branchId,
+      search,
+      status,
+    )
   }
 
   @UseGuards(RolesGuard) @Roles('admin', 'supervisor', 'inventario')

@@ -179,30 +179,30 @@
 
   /* Tabla */
   .table-container {
-    @apply w-full overflow-x-auto rounded-lg border border-border-subtle;
+    @apply w-full overflow-x-auto rounded-xl border border-border-subtle bg-bg-secondary shadow-sm;
   }
   .table {
-    @apply w-full text-sm;
+    @apply w-full text-sm border-collapse table-auto;
   }
   .table thead {
-    @apply bg-bg-secondary;
+    @apply bg-bg-elevated sticky top-0 z-10;
   }
   .table thead th {
-    @apply px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase tracking-wider;
+    @apply px-5 py-3.5 text-xs font-semibold text-text-secondary uppercase tracking-wider whitespace-nowrap align-middle;
   }
   .table tbody tr {
     @apply border-t border-border-subtle transition-colors duration-100 hover:bg-bg-hover;
   }
   .table tbody td {
-    @apply px-4 py-3 text-text-primary;
+    @apply px-5 py-3.5 text-text-primary align-middle;
   }
 
   /* Página header */
   .page-header {
-    @apply flex items-center justify-between mb-6;
+    @apply flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between;
   }
   .page-title {
-    @apply text-2xl font-bold text-text-primary;
+    @apply text-xl sm:text-2xl font-bold text-text-primary;
   }
   .page-subtitle {
     @apply text-sm text-text-secondary mt-0.5;
@@ -210,7 +210,7 @@
 
   /* Estado vacío */
   .empty-state {
-    @apply flex flex-col items-center justify-center py-20 text-center;
+    @apply flex flex-col items-center justify-center py-12 sm:py-20 text-center px-4;
   }
   .empty-state-icon {
     @apply w-16 h-16 text-text-secondary mb-4;
@@ -241,21 +241,21 @@
 
   /* Overlay / Modal backdrop */
   .modal-overlay {
-    @apply fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4;
+    @apply fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4;
     animation: fadeIn 0.15s ease-out;
   }
   .modal {
-    @apply bg-bg-elevated border border-border-subtle rounded-xl shadow-modal w-full;
+    @apply bg-bg-elevated border border-border-subtle rounded-t-xl sm:rounded-xl shadow-modal w-full max-h-[92vh] sm:max-h-[90vh] flex flex-col;
     animation: slideUp 0.2s ease-out;
   }
   .modal-header {
-    @apply flex items-center justify-between p-6 border-b border-border-subtle;
+    @apply flex items-center justify-between p-4 sm:p-6 border-b border-border-subtle flex-shrink-0;
   }
   .modal-body {
-    @apply p-6;
+    @apply p-4 sm:p-6 overflow-y-auto;
   }
   .modal-footer {
-    @apply flex items-center justify-end gap-3 p-6 border-t border-border-subtle;
+    @apply flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 p-4 sm:p-6 border-t border-border-subtle flex-shrink-0;
   }
 
   /* Sidebar */
@@ -330,10 +330,10 @@
 
   /* Tab */
   .tabs {
-    @apply flex border-b border-border-subtle mb-6;
+    @apply flex border-b border-border-subtle mb-6 overflow-x-auto no-scrollbar gap-0 -mx-1 px-1;
   }
   .tab {
-    @apply px-4 py-3 text-sm font-medium text-text-secondary border-b-2 border-transparent;
+    @apply px-3 sm:px-4 py-2.5 sm:py-3 text-sm font-medium text-text-secondary border-b-2 border-transparent whitespace-nowrap flex-shrink-0;
     @apply transition-all duration-150 hover:text-text-primary hover:border-border-subtle cursor-pointer;
   }
   .tab.active {
@@ -387,10 +387,15 @@
     min-height: 44px;
     min-width: 44px;
   }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }
 
 /* ─────────────────────────────────────────────
-   Responsive — Móvil (sidebar oculto, tab bar)
+   Responsive — legado .sidebar/.topbar (no usados por Tailwind layout)
+   Se mantienen por compatibilidad; el layout real está en componentes.
 ───────────────────────────────────────────── */
 @media (max-width: 767px) {
   .sidebar {
@@ -405,13 +410,10 @@
   }
   .main-content {
     padding-left: 0 !important;
-    padding-bottom: 72px; /* tab bar */
+    padding-bottom: 72px;
   }
 }
 
-/* ─────────────────────────────────────────────
-   Responsive — Tablet (sidebar colapsado)
-───────────────────────────────────────────── */
 @media (min-width: 768px) and (max-width: 1023px) {
   .sidebar {
     width: var(--sidebar-collapsed);
@@ -421,9 +423,6 @@
   }
   .main-content {
     padding-left: var(--sidebar-collapsed);
-  }
-  .sidebar-label {
-    display: none;
   }
 }
 

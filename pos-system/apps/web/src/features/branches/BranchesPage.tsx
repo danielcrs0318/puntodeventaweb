@@ -156,7 +156,7 @@ export default function BranchesPage() {
         }
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Código"
               required
@@ -176,7 +176,7 @@ export default function BranchesPage() {
             value={form.address}
             onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
           />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Teléfono"
               value={form.phone}

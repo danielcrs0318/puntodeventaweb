@@ -149,7 +149,7 @@ export default function CashRegisterPage() {
             </div>
           ) : (
             <div className="space-y-5">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <StatCard label="Cajero" value={session.user?.name ?? user?.name ?? '—'} icon={<DollarSign size={18} />} />
                 <StatCard label="Apertura" value={formatDateTime(session.openedAt).split(' ')[1] ?? '—'} />
                 <StatCard label="Monto Inicial" value={formatCurrency(session.openingAmount)} changeType="neutral" />
@@ -199,6 +199,7 @@ export default function CashRegisterPage() {
       {tab === 'historial' && (
         <>
           <Table
+            minWidth="980px"
             columns={[
               { key: 'openedAt', header: 'Apertura', render: (s) => formatDateTime(s.openedAt) },
               { key: 'closedAt', header: 'Cierre', render: (s) => s.closedAt ? formatDateTime(s.closedAt) : '—' },

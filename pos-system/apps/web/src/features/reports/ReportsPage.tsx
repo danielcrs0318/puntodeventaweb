@@ -1,16 +1,30 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { TrendingUp, Package, Users, Download, FileText } from 'lucide-react'
+import { TrendingUp, Package, Users, Download, FileText, Search } from 'lucide-react'
 import api from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { Table } from '@/components/ui/Table'
-import { formatCurrency } from '@/lib/utils'
+import { Pagination } from '@/components/ui/Pagination'
+import { downloadApiFile, formatCurrency } from '@/lib/utils'
+import { getApiErrorMessageAsync } from '@/lib/errors'
+import { toast } from '@/components/ui/Toast'
 import { PageLoader } from '@/components/ui/Spinner'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
 type ReportTab = 'ventas' | 'productos' | 'cajeros' | 'inventario' | 'ganancia'
+
+const tabLabels: Record<ReportTab, string> = {
+  ventas: 'Ventas',
+  productos: 'Productos',
+  cajeros: 'Cajeros',
+  inventario: 'Inventario',
+  ganancia: 'Ganancia bruta',
+}
+
+const PAGE_SIZE = 20
 
 interface SaleReportItem {
   id: number
@@ -26,6 +40,7 @@ interface ProductReportItem {
   product?: { id?: number; sku?: string; name?: string }
   quantitySold: number
   revenue: number
+  rank?: number
 }
 
 interface CashierReportItem {
@@ -58,35 +73,70 @@ export default function ReportsPage() {
   const [tab, setTab] = useState<ReportTab>('ventas')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
+  const debouncedSearch = useDebouncedValue(search)
 
-  const queryParams = `from=${from}&to=${to}`
+  const dateParams = new URLSearchParams()
+  if (from) dateParams.set('from', from)
+  if (to) dateParams.set('to', to)
+  const dateQuery = dateParams.toString()
+  const withDatesAnd = dateQuery ? `&${dateQuery}` : ''
+
+  const listParams = new URLSearchParams({
+    page: String(page),
+    limit: String(PAGE_SIZE),
+  })
+  if (from) listParams.set('from', from)
+  if (to) listParams.set('to', to)
+  if (debouncedSearch) listParams.set('search', debouncedSearch)
+  const listQuery = listParams.toString()
 
   const { data: salesReport, isLoading: loadingSales } = useQuery<{
     count: number
     totalRevenue: number
     totalTax: number
     sales: SaleReportItem[]
+    page?: number
+    limit?: number
   }>({
-    queryKey: ['report-sales', from, to],
-    queryFn: async () => (await api.get(`/reports/sales?${queryParams}`)).data,
+    queryKey: ['report-sales', from, to, page, debouncedSearch],
+    queryFn: async () => (await api.get(`/reports/sales?${listQuery}`)).data,
     enabled: tab === 'ventas',
   })
 
-  const { data: productsReport = [], isLoading: loadingProducts } = useQuery<ProductReportItem[]>({
-    queryKey: ['report-products', from, to],
-    queryFn: async () => (await api.get(`/reports/products?${queryParams}`)).data,
+  const { data: productsReport, isLoading: loadingProducts } = useQuery<{
+    data: ProductReportItem[]
+    total: number
+  }>({
+    queryKey: ['report-products', from, to, page, debouncedSearch],
+    queryFn: async () => (await api.get(`/reports/products?${listQuery}`)).data,
     enabled: tab === 'productos',
   })
 
   const { data: cashiersReport = [], isLoading: loadingCashiers } = useQuery<CashierReportItem[]>({
     queryKey: ['report-cashiers', from, to],
-    queryFn: async () => (await api.get(`/reports/cashiers?${queryParams}`)).data,
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (from) params.set('from', from)
+      if (to) params.set('to', to)
+      const q = params.toString()
+      return (await api.get(`/reports/cashiers${q ? `?${q}` : ''}`)).data
+    },
     enabled: tab === 'cajeros',
   })
 
-  const { data: inventoryReport = [], isLoading: loadingInventory } = useQuery<InventoryReportItem[]>({
-    queryKey: ['report-inventory'],
-    queryFn: async () => (await api.get('/reports/inventory')).data,
+  const { data: inventoryReport, isLoading: loadingInventory } = useQuery<{
+    data: InventoryReportItem[]
+    total: number
+  }>({
+    queryKey: ['report-inventory', page, debouncedSearch],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) })
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      return (await api.get(`/reports/inventory?${params}`)).data
+    },
     enabled: tab === 'inventario',
   })
 
@@ -97,25 +147,36 @@ export default function ReportsPage() {
     margin: number
     salesCount: number
     products: GrossProfitItem[]
+    total: number
   }>({
-    queryKey: ['report-gross-profit', from, to],
-    queryFn: async () => (await api.get(`/reports/gross-profit?${queryParams}`)).data,
+    queryKey: ['report-gross-profit', from, to, page, debouncedSearch],
+    queryFn: async () => (await api.get(`/reports/gross-profit?${listQuery}`)).data,
     enabled: tab === 'ganancia',
   })
 
   const handleExport = async (format: 'pdf' | 'excel') => {
-    const ext = format === 'pdf' ? 'pdf' : 'csv'
     const type = tab === 'ganancia' ? 'ganancia' : tab
-    const url = `/api/reports/export/${format === 'pdf' ? 'pdf' : 'excel'}?type=${type}&${queryParams}`
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `reporte-${type}.${ext}`
-    link.click()
+    const ext = format === 'pdf' ? 'pdf' : 'csv'
+    const path = `/reports/export/${format === 'pdf' ? 'pdf' : 'excel'}?type=${type}${withDatesAnd}`
+    const mime = format === 'pdf' ? 'application/pdf' : 'text/csv;charset=utf-8'
+
+    try {
+      setExporting(format)
+      await downloadApiFile(path, `reporte-${type}.${ext}`, mime)
+      toast.success('Descarga lista', `Reporte de ${tabLabels[tab]} (${ext.toUpperCase()})`)
+    } catch (error: unknown) {
+      toast.error('No se pudo descargar', await getApiErrorMessageAsync(error, 'Intenta de nuevo'))
+    } finally {
+      setExporting(null)
+    }
   }
 
-  const productsWithRank = productsReport.map((p, idx) => ({ ...p, rank: idx + 1 }))
+  const productsWithRank = (productsReport?.data ?? []).map((p, idx) => ({
+    ...p,
+    rank: (page - 1) * PAGE_SIZE + idx + 1,
+  }))
 
-  const salesChartData = salesReport?.sales?.slice(0, 30).reduce((acc: { date: string; total: number }[], s) => {
+  const salesChartData = salesReport?.sales?.reduce((acc: { date: string; total: number }[], s) => {
     const day = s.createdAt?.slice(0, 10)?.slice(5) ?? ''
     const existing = acc.find((d) => d.date === day)
     if (existing) existing.total += Number(s.total)
@@ -123,12 +184,18 @@ export default function ReportsPage() {
     return acc
   }, []) ?? []
 
-  const tabLabels: Record<ReportTab, string> = {
-    ventas: 'Ventas',
-    productos: 'Productos',
-    cajeros: 'Cajeros',
-    inventario: 'Inventario',
-    ganancia: 'Ganancia bruta',
+  const showSearch = tab !== 'cajeros'
+  const listTotal =
+    tab === 'ventas' ? (salesReport?.count ?? 0)
+      : tab === 'productos' ? (productsReport?.total ?? 0)
+        : tab === 'inventario' ? (inventoryReport?.total ?? 0)
+          : tab === 'ganancia' ? (profitReport?.total ?? 0)
+            : 0
+
+  const changeTab = (t: ReportTab) => {
+    setTab(t)
+    setPage(1)
+    setSearch('')
   }
 
   return (
@@ -138,36 +205,62 @@ export default function ReportsPage() {
           <h1 className="page-title">Reportes</h1>
           <p className="page-subtitle">Analiza el rendimiento de tu negocio</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" leftIcon={<FileText size={16} />} onClick={() => handleExport('pdf')} id="export-pdf-btn">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button
+            variant="secondary"
+            leftIcon={<FileText size={16} />}
+            onClick={() => handleExport('pdf')}
+            loading={exporting === 'pdf'}
+            disabled={!!exporting}
+            id="export-pdf-btn"
+            className="w-full sm:w-auto"
+          >
             Exportar PDF
           </Button>
-          <Button variant="secondary" leftIcon={<Download size={16} />} onClick={() => handleExport('excel')} id="export-excel-btn">
+          <Button
+            variant="secondary"
+            leftIcon={<Download size={16} />}
+            onClick={() => handleExport('excel')}
+            loading={exporting === 'excel'}
+            disabled={!!exporting}
+            id="export-excel-btn"
+            className="w-full sm:w-auto"
+          >
             Exportar Excel
           </Button>
         </div>
       </div>
 
       <div className="card mb-5 flex flex-wrap items-end gap-4">
-        <Input label="Desde" type="date" value={from} onChange={(e) => setFrom(e.target.value)} fullWidth={false} />
-        <Input label="Hasta" type="date" value={to} onChange={(e) => setTo(e.target.value)} fullWidth={false} />
-        <Button variant="ghost" onClick={() => { setFrom(''); setTo('') }}>Limpiar fechas</Button>
+        <Input label="Desde" type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1) }} fullWidth={false} />
+        <Input label="Hasta" type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1) }} fullWidth={false} />
+        {showSearch && (
+          <Input
+            label="Buscar"
+            placeholder="Factura, producto, SKU..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+            leftIcon={<Search size={16} />}
+            className="w-full sm:min-w-[220px]"
+            fullWidth={false}
+          />
+        )}
+        <Button variant="ghost" onClick={() => { setFrom(''); setTo(''); setSearch(''); setPage(1) }}>Limpiar</Button>
       </div>
 
       <div className="tabs mb-6">
         {(['ventas', 'productos', 'cajeros', 'inventario', 'ganancia'] as ReportTab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`tab ${tab === t ? 'active' : ''}`}>
+          <button key={t} type="button" onClick={() => changeTab(t)} className={`tab ${tab === t ? 'active' : ''}`}>
             {tabLabels[t]}
           </button>
         ))}
       </div>
 
-      {/* Tab: Ventas */}
       {tab === 'ventas' && (
         <div className="space-y-6">
           {loadingSales ? <PageLoader /> : (
             <>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="card text-center">
                   <p className="text-text-secondary text-xs uppercase tracking-wide mb-1">Total Ventas</p>
                   <p className="text-3xl font-bold text-accent-light">{salesReport?.count ?? 0}</p>
@@ -184,7 +277,7 @@ export default function ReportsPage() {
 
               {salesChartData.length > 0 && (
                 <div className="card">
-                  <h3 className="text-sm font-semibold text-text-secondary mb-4">Ventas por día</h3>
+                  <h3 className="text-sm font-semibold text-text-secondary mb-4">Ventas por día (página actual)</h3>
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={salesChartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -198,6 +291,7 @@ export default function ReportsPage() {
               )}
 
               <Table
+                minWidth="880px"
                 columns={[
                   { key: 'invoiceNumber', header: 'Factura', render: (s) => <span className="font-mono text-xs">{s.invoiceNumber}</span> },
                   { key: 'createdAt', header: 'Fecha', render: (s) => s.createdAt?.slice(0, 10) },
@@ -206,31 +300,49 @@ export default function ReportsPage() {
                   { key: 'total', header: 'Total', align: 'right', render: (s) => formatCurrency(s.total) },
                   { key: 'status', header: 'Estado', align: 'center', render: (s) => <Badge variant={s.status === 'COMPLETADA' ? 'success' : 'danger'}>{s.status}</Badge> },
                 ]}
-                data={salesReport?.sales?.slice(0, 50) ?? []}
-                keyExtractor={(s) => s.id} emptyMessage="Sin ventas en el período"
+                data={salesReport?.sales ?? []}
+                keyExtractor={(s) => s.id}
+                emptyMessage="Sin ventas en el período"
+              />
+              <Pagination
+                currentPage={page}
+                totalPages={Math.ceil(listTotal / PAGE_SIZE)}
+                totalItems={listTotal}
+                itemsPerPage={PAGE_SIZE}
+                onPageChange={setPage}
               />
             </>
           )}
         </div>
       )}
 
-      {/* Tab: Productos */}
       {tab === 'productos' && (
-        <Table
-          columns={[
-            { key: 'rank', header: '#', render: (p) => <span className="text-text-secondary">{p.rank}</span> },
-            { key: 'sku', header: 'SKU', render: (p) => <span className="font-mono text-xs">{p.product?.sku}</span> },
-            { key: 'name', header: 'Producto', render: (p) => p.product?.name ?? '—' },
-            { key: 'quantitySold', header: 'Unidades Vendidas', align: 'center', render: (p) => <span className="font-bold">{p.quantitySold}</span> },
-            { key: 'revenue', header: 'Ingresos', align: 'right', render: (p) => formatCurrency(p.revenue) },
-          ]}
-          data={productsWithRank} loading={loadingProducts}
-          keyExtractor={(p) => p.product?.id ?? p.rank}
-          emptyMessage="Sin datos de productos" emptyIcon={<Package size={48} />}
-        />
+        <>
+          <Table
+            minWidth="720px"
+            columns={[
+              { key: 'rank', header: '#', render: (p) => <span className="text-text-secondary">{p.rank}</span> },
+              { key: 'sku', header: 'SKU', render: (p) => <span className="font-mono text-xs">{p.product?.sku}</span> },
+              { key: 'name', header: 'Producto', render: (p) => p.product?.name ?? '—' },
+              { key: 'quantitySold', header: 'Unidades Vendidas', align: 'center', render: (p) => <span className="font-bold">{p.quantitySold}</span> },
+              { key: 'revenue', header: 'Ingresos', align: 'right', render: (p) => formatCurrency(p.revenue) },
+            ]}
+            data={productsWithRank}
+            loading={loadingProducts}
+            keyExtractor={(p) => p.product?.id ?? p.rank ?? 0}
+            emptyMessage="Sin datos de productos"
+            emptyIcon={<Package size={48} />}
+          />
+          <Pagination
+            currentPage={page}
+            totalPages={Math.ceil(listTotal / PAGE_SIZE)}
+            totalItems={listTotal}
+            itemsPerPage={PAGE_SIZE}
+            onPageChange={setPage}
+          />
+        </>
       )}
 
-      {/* Tab: Cajeros */}
       {tab === 'cajeros' && (
         <Table
           columns={[
@@ -239,28 +351,40 @@ export default function ReportsPage() {
             { key: 'totalRevenue', header: 'Total Vendido', align: 'right', render: (c) => formatCurrency(c.totalRevenue) },
             { key: 'average', header: 'Promedio/Venta', align: 'right', render: (c) => formatCurrency(c.average) },
           ]}
-          data={cashiersReport} loading={loadingCashiers}
+          data={cashiersReport}
+          loading={loadingCashiers}
           keyExtractor={(c) => c.userId}
-          emptyMessage="Sin datos de cajeros" emptyIcon={<Users size={48} />}
+          emptyMessage="Sin datos de cajeros"
+          emptyIcon={<Users size={48} />}
         />
       )}
 
-      {/* Tab: Inventario */}
       {tab === 'inventario' && (
-        <Table
-          columns={[
-            { key: 'sku', header: 'SKU', render: (i) => <span className="font-mono text-xs">{i.product?.sku}</span> },
-            { key: 'name', header: 'Producto', render: (i) => <div><p>{i.product?.name}</p><p className="text-xs text-text-secondary">{i.product?.category?.name}</p></div> },
-            { key: 'quantity', header: 'Stock', align: 'center', render: (i) => <Badge variant={i.status === 'AGOTADO' ? 'danger' : i.status === 'BAJO' ? 'warning' : 'success'} dot>{i.quantity}</Badge> },
-            { key: 'costPrice', header: 'Costo Unit.', align: 'right', render: (i) => formatCurrency(i.product?.costPrice) },
-            { key: 'costValue', header: 'Valor en Costo', align: 'right', render: (i) => formatCurrency(i.costValue) },
-            { key: 'saleValue', header: 'Valor en Venta', align: 'right', render: (i) => formatCurrency(i.saleValue) },
-            { key: 'status', header: 'Estado', align: 'center', render: (i) => <Badge variant={i.status === 'AGOTADO' ? 'danger' : i.status === 'BAJO' ? 'warning' : 'success'}>{i.status}</Badge> },
-          ]}
-          data={inventoryReport} loading={loadingInventory}
-          keyExtractor={(i) => i.product?.id ?? Math.random()}
-          emptyMessage="Sin datos de inventario"
-        />
+        <>
+          <Table
+            minWidth="900px"
+            columns={[
+              { key: 'sku', header: 'SKU', render: (i) => <span className="font-mono text-xs">{i.product?.sku}</span> },
+              { key: 'name', header: 'Producto', render: (i) => <div><p>{i.product?.name}</p><p className="text-xs text-text-secondary">{i.product?.category?.name}</p></div> },
+              { key: 'quantity', header: 'Stock', align: 'center', render: (i) => <Badge variant={i.status === 'AGOTADO' ? 'danger' : i.status === 'BAJO' ? 'warning' : 'success'} dot>{i.quantity}</Badge> },
+              { key: 'costPrice', header: 'Costo Unit.', align: 'right', render: (i) => formatCurrency(i.product?.costPrice) },
+              { key: 'costValue', header: 'Valor en Costo', align: 'right', render: (i) => formatCurrency(i.costValue) },
+              { key: 'saleValue', header: 'Valor en Venta', align: 'right', render: (i) => formatCurrency(i.saleValue) },
+              { key: 'status', header: 'Estado', align: 'center', render: (i) => <Badge variant={i.status === 'AGOTADO' ? 'danger' : i.status === 'BAJO' ? 'warning' : 'success'}>{i.status}</Badge> },
+            ]}
+            data={inventoryReport?.data ?? []}
+            loading={loadingInventory}
+            keyExtractor={(i) => `${i.product?.id ?? i.product?.sku ?? 'row'}-${i.quantity}`}
+            emptyMessage="Sin datos de inventario"
+          />
+          <Pagination
+            currentPage={page}
+            totalPages={Math.ceil(listTotal / PAGE_SIZE)}
+            totalItems={listTotal}
+            itemsPerPage={PAGE_SIZE}
+            onPageChange={setPage}
+          />
+        </>
       )}
 
       {tab === 'ganancia' && (
@@ -286,6 +410,7 @@ export default function ReportsPage() {
                 </div>
               </div>
               <Table
+                minWidth="860px"
                 columns={[
                   { key: 'sku', header: 'SKU', render: (p) => <span className="font-mono text-xs">{p.sku}</span> },
                   { key: 'name', header: 'Producto' },
@@ -302,6 +427,13 @@ export default function ReportsPage() {
                 keyExtractor={(p) => p.productId}
                 emptyMessage="Sin datos de ganancia en el período"
                 emptyIcon={<TrendingUp size={48} />}
+              />
+              <Pagination
+                currentPage={page}
+                totalPages={Math.ceil(listTotal / PAGE_SIZE)}
+                totalItems={listTotal}
+                itemsPerPage={PAGE_SIZE}
+                onPageChange={setPage}
               />
             </>
           )}

@@ -35,8 +35,9 @@ export class SalesService {
     userId?: number; customerId?: number
     status?: string; paymentMethod?: string
     branchId?: number
+    search?: string
   }) {
-    const { page = 1, limit = 20, from, to, userId, customerId, status, paymentMethod, branchId } = filters
+    const { page = 1, limit = 20, from, to, userId, customerId, status, paymentMethod, branchId, search } = filters
     const skip = (page - 1) * limit
     const where: any = {}
     if (branchId) where.branchId = branchId
@@ -49,6 +50,15 @@ export class SalesService {
     if (customerId) where.customerId = customerId
     if (status) where.status = status
     if (paymentMethod) where.paymentMethod = paymentMethod
+    if (search?.trim()) {
+      const q = search.trim()
+      where.OR = [
+        { invoiceNumber: { contains: q } },
+        { customer: { name: { contains: q } } },
+        { customer: { identificationNumber: { contains: q } } },
+        { user: { name: { contains: q } } },
+      ]
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.sale.findMany({

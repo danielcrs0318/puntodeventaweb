@@ -147,29 +147,29 @@ export default function PosPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px-48px)] gap-4 -m-6 p-4">
+    <div className="flex h-[calc(100dvh-4rem-4rem)] md:h-[calc(100dvh-4rem)] gap-0 lg:gap-4 p-3 sm:p-4">
       {/* ────────── Panel izquierdo: Catálogo ────────── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Barra de búsqueda */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-3 sm:mb-4">
           <Input
             ref={searchRef}
-            placeholder="Buscar por nombre, SKU o código de barras... (F2)"
+            placeholder="Buscar producto, SKU o código..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             leftIcon={<Search size={16} />}
             rightIcon={search ? (
-              <button onClick={() => setSearch('')}>
+              <button type="button" onClick={() => setSearch('')}>
                 <X size={14} />
               </button>
             ) : <Barcode size={16} />}
             id="pos-search-input"
           />
-          {/* Botón carrito móvil */}
+          {/* Botón carrito — móvil y tablet */}
           <Button
             variant="secondary"
             size="icon"
-            className="md:hidden relative"
+            className="lg:hidden relative flex-shrink-0"
             onClick={() => setShowCart(true)}
             aria-label="Ver carrito"
           >
@@ -182,8 +182,8 @@ export default function PosPage() {
           </Button>
         </div>
 
-        {/* Atajos de teclado info */}
-        <div className="flex gap-3 mb-3 text-xs text-text-secondary">
+        {/* Atajos de teclado — solo desktop */}
+        <div className="hidden lg:flex gap-3 mb-3 text-xs text-text-secondary">
           <span><span className="kbd">F2</span> Buscar</span>
           <span><span className="kbd">F4</span> Cobrar</span>
           <span><span className="kbd">Esc</span> Cerrar</span>
@@ -192,9 +192,9 @@ export default function PosPage() {
         {/* Grid de productos */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 sm:gap-3">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="card h-40 animate-pulse bg-bg-hover" />
+                <div key={i} className="card h-36 sm:h-40 animate-pulse bg-bg-hover" />
               ))}
             </div>
           ) : products.length === 0 ? (
@@ -206,7 +206,7 @@ export default function PosPage() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 sm:gap-3">
               {products.map((product) => (
                 <ProductCard
                   key={product.id}
@@ -220,14 +220,26 @@ export default function PosPage() {
         </div>
       </div>
 
+      {/* Backdrop carrito (móvil/tablet) */}
+      {showCart && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setShowCart(false)}
+          aria-hidden
+        />
+      )}
+
       {/* ────────── Panel derecho: Carrito ────────── */}
       <div
         className={[
-          'w-96 flex-shrink-0 flex flex-col bg-bg-secondary rounded-xl border border-border-subtle',
-          // Móvil: drawer
-          'max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:top-16 max-md:z-50',
-          'max-md:transition-transform max-md:duration-250',
-          showCart ? 'max-md:translate-x-0' : 'max-md:translate-x-full',
+          'flex flex-col bg-bg-secondary border border-border-subtle',
+          // Desktop: panel fijo
+          'lg:w-96 lg:flex-shrink-0 lg:rounded-xl lg:relative lg:translate-x-0',
+          // Móvil/tablet: drawer
+          'fixed inset-y-0 right-0 top-16 z-50 w-full max-w-md',
+          'lg:inset-auto lg:top-auto lg:z-auto lg:max-w-none',
+          'transition-transform duration-250',
+          showCart ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
         ].join(' ')}
       >
         {/* Header carrito */}
@@ -258,11 +270,11 @@ export default function PosPage() {
                 <X size={14} />
               </Button>
             )}
-            {/* Cerrar en móvil */}
+            {/* Cerrar en móvil/tablet */}
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="lg:hidden"
               onClick={() => setShowCart(false)}
             >
               <X size={18} />

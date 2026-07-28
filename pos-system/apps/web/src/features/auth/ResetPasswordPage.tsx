@@ -1,8 +1,9 @@
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Lock, ArrowLeft } from 'lucide-react'
+import { Lock, ArrowLeft, Eye, EyeOff } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { getApiErrorMessage } from '@/lib/errors'
@@ -23,6 +24,8 @@ export default function ResetPasswordPage() {
   const [params] = useSearchParams()
   const token = params.get('token') ?? ''
   const navigate = useNavigate()
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -51,6 +54,22 @@ export default function ResetPasswordPage() {
     )
   }
 
+  const eyeBtn = (show: boolean, toggle: () => void) => (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        toggle()
+      }}
+      className="text-text-secondary hover:text-text-primary transition-colors p-0.5"
+      aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+    >
+      {show ? <EyeOff size={16} /> : <Eye size={16} />}
+    </button>
+  )
+
   return (
     <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4">
       <div className="w-full max-w-md card p-8 space-y-6">
@@ -61,15 +80,17 @@ export default function ResetPasswordPage() {
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
           <Input
             label="Nueva contraseña"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             leftIcon={<Lock size={16} />}
+            rightIcon={eyeBtn(showPassword, () => setShowPassword((s) => !s))}
             error={errors.password?.message}
             {...register('password')}
           />
           <Input
             label="Confirmar contraseña"
-            type="password"
+            type={showConfirm ? 'text' : 'password'}
             leftIcon={<Lock size={16} />}
+            rightIcon={eyeBtn(showConfirm, () => setShowConfirm((s) => !s))}
             error={errors.confirmPassword?.message}
             {...register('confirmPassword')}
           />

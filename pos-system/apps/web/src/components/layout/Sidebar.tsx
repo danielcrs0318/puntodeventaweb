@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -46,11 +45,18 @@ const navItems: NavItem[] = [
 ]
 
 interface SidebarProps {
-  collapsed: boolean
-  onToggle: () => void
+  desktopCollapsed: boolean
+  mobileOpen: boolean
+  onCloseMobile: () => void
+  onToggleDesktop: () => void
 }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({
+  desktopCollapsed,
+  mobileOpen,
+  onCloseMobile,
+  onToggleDesktop,
+}: SidebarProps) {
   const { user, hasRole } = useAuthStore()
   const navigate = useNavigate()
 
@@ -58,40 +64,48 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     (item) => !item.roles || hasRole(item.roles),
   )
 
+  // En móvil siempre mostrar etiquetas cuando está abierto
+  const showLabels = mobileOpen || !desktopCollapsed
+
   return (
     <>
-      {/* Overlay móvil */}
       <div
         className={`fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity ${
-          !collapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
-        onClick={onToggle}
+        onClick={onCloseMobile}
+        aria-hidden={!mobileOpen}
       />
 
       <aside
         className={[
           'fixed top-0 left-0 h-full bg-bg-secondary border-r border-border-subtle z-40 flex flex-col',
           'transition-all duration-250',
-          collapsed ? 'w-18' : 'w-64',
-          // Móvil: siempre oculto a menos que esté abierto
-          collapsed ? '-translate-x-full md:translate-x-0' : 'translate-x-0',
+          // Ancho: en móvil siempre w-64; en desktop según colapso
+          'w-64',
+          desktopCollapsed ? 'md:w-[72px]' : 'md:w-64',
+          // Visibilidad móvil
+          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         ].join(' ')}
       >
-        {/* Logo */}
         <div className="flex items-center h-16 px-4 border-b border-border-subtle flex-shrink-0">
           <button
-            onClick={() => navigate('/dashboard')}
+            type="button"
+            onClick={() => {
+              navigate('/dashboard')
+              onCloseMobile()
+            }}
             className="flex items-center gap-3 min-w-0"
           >
             <div className="w-9 h-9 rounded-lg bg-accent-primary flex items-center justify-center flex-shrink-0">
               <Store size={20} className="text-white" />
             </div>
-            {!collapsed && (
-              <div className="min-w-0">
+            {showLabels && (
+              <div className="min-w-0 md:block">
                 <p className="text-sm font-bold text-text-primary leading-tight truncate">
                   POS Honduras
                 </p>
-                <p className="text-xs text-text-secondary truncate">
+                <p className="text-xs text-text-secondary truncate capitalize">
                   {user?.role.name ?? 'Sistema'}
                 </p>
               </div>
@@ -99,42 +113,44 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           </button>
         </div>
 
-        {/* Navegación */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 no-scrollbar">
           {visibleItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
-              title={collapsed ? item.label : undefined}
+              title={!showLabels ? item.label : undefined}
+              onClick={onCloseMobile}
               className={({ isActive }) =>
                 [
                   'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-150',
                   isActive
                     ? 'bg-accent-muted text-accent-light border border-accent-primary/30'
                     : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-                  collapsed ? 'justify-center' : '',
+                  !showLabels ? 'md:justify-center' : '',
                 ].join(' ')
               }
             >
               <span className="flex-shrink-0">{item.icon}</span>
-              {!collapsed && (
-                <span className="sidebar-label truncate">{item.label}</span>
+              {showLabels && (
+                <span className="truncate">{item.label}</span>
               )}
             </NavLink>
           ))}
         </nav>
 
-        {/* Toggle */}
-        <div className="p-2 border-t border-border-subtle">
+        <div className="p-2 border-t border-border-subtle hidden md:block">
           <button
-            onClick={onToggle}
+            type="button"
+            onClick={onToggleDesktop}
             className="w-full flex items-center justify-center p-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-150"
-            aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+            aria-label={desktopCollapsed ? 'Expandir menú' : 'Colapsar menú'}
           >
-            {collapsed ? <ChevronRight size={18} /> : (
+            {desktopCollapsed ? (
+              <ChevronRight size={18} />
+            ) : (
               <span className="flex items-center gap-2">
                 <ChevronLeft size={18} />
-                <span className="text-xs sidebar-label">Colapsar</span>
+                <span className="text-xs">Colapsar</span>
               </span>
             )}
           </button>

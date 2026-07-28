@@ -23,8 +23,14 @@ export class InventoryController {
   constructor(private inventoryService: InventoryService) {}
 
   @Get()
-  getStock(@CurrentBranchId() branchId: number) {
-    return this.inventoryService.getStock(branchId)
+  getStock(
+    @CurrentBranchId() branchId: number,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('search') search?: string,
+    @Query('status') status?: 'bajo' | 'agotado' | 'ok',
+  ) {
+    return this.inventoryService.getStock(branchId, +page, +limit, search, status)
   }
 
   @Get('movements')
@@ -33,8 +39,15 @@ export class InventoryController {
     @Query('page') page = '1',
     @Query('limit') limit = '30',
     @Query('productId') productId?: string,
+    @Query('search') search?: string,
   ) {
-    return this.inventoryService.getMovements(branchId, +page, +limit, productId ? +productId : undefined)
+    return this.inventoryService.getMovements(
+      branchId,
+      +page,
+      +limit,
+      productId ? +productId : undefined,
+      search,
+    )
   }
 
   @UseGuards(RolesGuard)

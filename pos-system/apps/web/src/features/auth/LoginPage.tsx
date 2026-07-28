@@ -112,8 +112,14 @@ export default function LoginPage() {
               rightIcon={
                 <button
                   type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  className="text-text-secondary hover:text-text-primary transition-colors"
+                  tabIndex={0}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setShowPassword((s) => !s)
+                  }}
+                  className="text-text-secondary hover:text-text-primary transition-colors p-0.5"
                   aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}

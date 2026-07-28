@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller'
 import { JwtStrategy } from './strategies/jwt.strategy'
 import { LocalStrategy } from './strategies/local.strategy'
 import { UsersModule } from '../users/users.module'
+import { resolveJwtSecret } from '../../common/utils/jwt-secret'
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { UsersModule } from '../users/users.module'
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => ({
-        secret: cfg.get<string>('JWT_SECRET', 'dev_secret'),
+        secret: resolveJwtSecret(cfg),
         signOptions: { expiresIn: cfg.get('JWT_EXPIRES_IN', '15m') as any },
       }),
     }),

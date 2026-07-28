@@ -35,6 +35,7 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: 'Renovar access token' })
+  @Throttle({ short: { limit: 20, ttl: 60_000 } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   refresh(@Body() dto: RefreshDto) {

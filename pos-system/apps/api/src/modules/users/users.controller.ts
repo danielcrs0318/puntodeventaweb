@@ -1,10 +1,10 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, ParseIntPipe, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, ParseIntPipe, UseGuards } from '@nestjs/common'
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
 import { UsersService } from './users.service'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
-import { IsString, IsEmail, IsOptional, IsInt, IsBoolean, MinLength } from 'class-validator'
+import { IsString, IsEmail, IsOptional, IsInt, IsBoolean, MinLength, IsArray, ArrayMinSize } from 'class-validator'
 import { Type } from 'class-transformer'
 
 class CreateUserDto {
@@ -12,6 +12,9 @@ class CreateUserDto {
   @IsEmail() email: string
   @IsString() @MinLength(8) password: string
   @IsInt() @Type(() => Number) roleId: number
+  @IsOptional() @IsArray() @ArrayMinSize(1) @IsInt({ each: true }) @Type(() => Number)
+  branchIds?: number[]
+  @IsOptional() @IsInt() @Type(() => Number) defaultBranchId?: number
 }
 class UpdateUserDto {
   @IsOptional() @IsString() name?: string
@@ -19,6 +22,9 @@ class UpdateUserDto {
   @IsOptional() @IsString() @MinLength(8) password?: string
   @IsOptional() @IsInt() @Type(() => Number) roleId?: number
   @IsOptional() @IsBoolean() isActive?: boolean
+  @IsOptional() @IsArray() @ArrayMinSize(1) @IsInt({ each: true }) @Type(() => Number)
+  branchIds?: number[]
+  @IsOptional() @IsInt() @Type(() => Number) defaultBranchId?: number
 }
 
 @ApiTags('Usuarios')
@@ -30,7 +36,19 @@ export class UsersController {
 
   @Roles('admin', 'supervisor')
   @Get()
-  findAll() { return this.usersService.findAll() }
+  findAll(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('search') search?: string,
+    @Query('active') active?: string,
+  ) {
+    return this.usersService.findAll(
+      +page,
+      +limit,
+      search,
+      active !== undefined ? active === 'true' : undefined,
+    )
+  }
 
   @Roles('admin')
   @Post()

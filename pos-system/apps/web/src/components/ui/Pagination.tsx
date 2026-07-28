@@ -16,9 +16,11 @@ export function Pagination({ currentPage, totalPages, totalItems, itemsPerPage, 
   const end = Math.min(currentPage * itemsPerPage, totalItems)
   const pages = getPageNumbers(currentPage, totalPages)
   return (
-    <div className="flex items-center justify-between mt-4 px-1">
-      <p className="text-sm text-text-secondary">Mostrando {start}–{end} de {totalItems} registros</p>
-      <div className="flex items-center gap-1">
+    <div className="flex items-center justify-between mt-4 px-1 flex-col gap-3 sm:flex-row sm:gap-0">
+      <p className="text-sm text-text-secondary order-2 sm:order-1">
+        <span className="sm:inline">Mostrando {start}–{end} de {totalItems}</span>
+      </p>
+      <div className="flex items-center gap-1 order-1 sm:order-2">
         <Button variant="ghost" size="sm" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} aria-label="Página anterior">
           <ChevronLeft size={16} />
         </Button>

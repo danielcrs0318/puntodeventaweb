@@ -15,6 +15,8 @@ import { ConfirmDialog, StatCard } from '@/components/ui/index'
 import { toast } from '@/components/ui/Toast'
 import { formatCurrency, formatDate, formatDateTime, statusLabel, statusClass } from '@/lib/utils'
 
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+
 interface Customer {
   id: number; name: string; identificationNumber?: string
   phone?: string; email?: string; address?: string
@@ -32,26 +34,29 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 const PAGE_SIZE = 20
+const HISTORY_PAGE_SIZE = 10
 
 export default function CustomersPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [historyPage, setHistoryPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null)
   const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null)
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null)
   const qc = useQueryClient()
+  const debouncedSearch = useDebouncedValue(search)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customers', page, search],
-    queryFn: async () => (await api.get(`/customers?page=${page}&limit=${PAGE_SIZE}${search ? `&search=${encodeURIComponent(search)}` : ''}`)).data,
+    queryKey: ['customers', page, debouncedSearch],
+    queryFn: async () => (await api.get(`/customers?page=${page}&limit=${PAGE_SIZE}${debouncedSearch ? `&search=${encodeURIComponent(debouncedSearch)}` : ''}`)).data,
   })
   const customers: Customer[] = data?.data ?? []
   const total: number = data?.total ?? 0
 
   const { data: salesHistory } = useQuery({
-    queryKey: ['customer-sales', historyCustomer?.id],
-    queryFn: async () => (await api.get(`/customers/${historyCustomer!.id}/sales?limit=20`)).data,
+    queryKey: ['customer-sales', historyCustomer?.id, historyPage],
+    queryFn: async () => (await api.get(`/customers/${historyCustomer!.id}/sales?page=${historyPage}&limit=${HISTORY_PAGE_SIZE}`)).data,
     enabled: !!historyCustomer,
   })
 
@@ -76,6 +81,11 @@ export default function CustomersPage() {
     onSuccess: () => { toast.success('Cliente eliminado'); qc.invalidateQueries({ queryKey: ['customers'] }); setDeleteCustomer(null) },
   })
 
+  const openHistory = (c: Customer) => {
+    setHistoryCustomer(c)
+    setHistoryPage(1)
+  }
+
   const openEdit = (c: Customer) => {
     setEditCustomer(c)
     reset({ name: c.name, identificationNumber: c.identificationNumber ?? '', phone: c.phone ?? '', email: c.email ?? '', address: c.address ?? '', creditLimit: c.creditLimit })
@@ -95,15 +105,21 @@ export default function CustomersPage() {
       </div>
 
       <div className="mb-5">
-        <Input placeholder="Buscar por nombre, RTN o teléfono..." value={search}
+        <Input
+          placeholder="Buscar por nombre, RTN o teléfono..."
+          value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-          leftIcon={<Search size={16} />} className="max-w-sm" fullWidth={false} />
+          leftIcon={<Search size={16} />}
+          className="max-w-sm"
+          fullWidth={false}
+        />
       </div>
 
       <Table
+        minWidth="820px"
         columns={[
           { key: 'name', header: 'Nombre', render: (c) => (
-            <button className="text-left hover:text-accent-light transition-colors" onClick={() => setHistoryCustomer(c)}>
+            <button className="text-left hover:text-accent-light transition-colors" onClick={() => openHistory(c)}>
               <p className="font-medium text-text-primary">{c.name}</p>
               {c.identificationNumber && <p className="text-xs text-text-secondary">{c.identificationNumber}</p>}
             </button>
@@ -116,7 +132,7 @@ export default function CustomersPage() {
           )},
           { key: 'actions', header: '', align: 'center', render: (c) => (
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" onClick={() => setHistoryCustomer(c)} title="Ver compras"><ShoppingBag size={15} /></Button>
+              <Button variant="ghost" size="icon" onClick={() => openHistory(c)} title="Ver compras"><ShoppingBag size={15} /></Button>
               <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Edit size={15} /></Button>
               <Button variant="ghost" size="icon" onClick={() => setDeleteCustomer(c)}><Trash2 size={15} className="text-danger" /></Button>
             </div>
@@ -137,7 +153,7 @@ export default function CustomersPage() {
           </Button></div>}>
         <div className="space-y-4">
           <Input label="Nombre completo" error={errors.name?.message} required {...register('name')} />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="RTN / Identidad" {...register('identificationNumber')} />
             <Input label="Teléfono" {...register('phone')} />
           </div>
@@ -148,7 +164,7 @@ export default function CustomersPage() {
       </Modal>
 
       {/* Modal historial */}
-      <Modal isOpen={!!historyCustomer} onClose={() => setHistoryCustomer(null)}
+      <Modal isOpen={!!historyCustomer} onClose={() => { setHistoryCustomer(null); setHistoryPage(1) }}
         title={`Historial de Compras — ${historyCustomer?.name}`} size="lg">
         <div className="space-y-2 max-h-96 overflow-y-auto">
           {!salesHistory?.data?.length ? (
@@ -166,6 +182,13 @@ export default function CustomersPage() {
             </div>
           ))}
         </div>
+        <Pagination
+          currentPage={historyPage}
+          totalPages={Math.ceil((salesHistory?.total ?? 0) / HISTORY_PAGE_SIZE)}
+          totalItems={salesHistory?.total ?? 0}
+          itemsPerPage={HISTORY_PAGE_SIZE}
+          onPageChange={setHistoryPage}
+        />
       </Modal>
 
       <ConfirmDialog isOpen={!!deleteCustomer} onClose={() => setDeleteCustomer(null)}

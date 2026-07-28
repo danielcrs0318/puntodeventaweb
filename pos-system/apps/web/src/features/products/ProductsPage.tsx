@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Edit, Trash2, Package, Upload, Filter, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Package, Upload } from 'lucide-react'
 import api from '@/lib/api'
 import { Table } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
@@ -11,6 +11,7 @@ import { formatCurrency } from '@/lib/utils'
 import { toast } from '@/components/ui/Toast'
 import { ProductFormModal } from './components/ProductFormModal'
 import { ImportProductsModal } from './components/ImportProductsModal'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
 interface Product {
   id: number
@@ -36,14 +37,15 @@ export default function ProductsPage() {
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null)
   const [filterActive, setFilterActive] = useState<boolean | undefined>(true)
   const qc = useQueryClient()
+  const debouncedSearch = useDebouncedValue(search)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', page, search, filterActive],
+    queryKey: ['products', page, debouncedSearch, filterActive],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
         limit: String(PAGE_SIZE),
-        ...(search ? { search } : {}),
+        ...(debouncedSearch ? { search: debouncedSearch } : {}),
         ...(filterActive !== undefined ? { active: String(filterActive) } : {}),
       })
       const res = await api.get(`/products?${params}`)
@@ -98,8 +100,7 @@ export default function ProductsPage() {
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1) }}
           leftIcon={<Search size={16} />}
-          className="max-w-xs"
-          fullWidth={false}
+          className="w-full sm:max-w-xs"
         />
         <div className="flex gap-2">
           {[{ label: 'Activos', value: true }, { label: 'Inactivos', value: false }, { label: 'Todos', value: undefined }].map((f) => (
@@ -116,6 +117,7 @@ export default function ProductsPage() {
 
       {/* Tabla */}
       <Table
+        minWidth="960px"
         columns={[
           {
             key: 'image', header: '', width: '60px',

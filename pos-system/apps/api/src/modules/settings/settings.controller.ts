@@ -6,6 +6,7 @@ import { SettingsService } from './settings.service'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
+import { imageFileFilter } from '../../common/utils/image-file-filter'
 import { IsOptional, IsString, IsBoolean, IsNumber, IsEmail } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -39,7 +40,7 @@ export class SettingsController {
 
   @UseGuards(RolesGuard) @Roles('admin')
   @Post('logo')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { fileFilter: imageFileFilter }))
   async uploadLogo(@UploadedFile() file: Express.Multer.File) {
     const url = `/uploads/${file.filename}`
     await this.settingsService.update({ businessLogo: url })

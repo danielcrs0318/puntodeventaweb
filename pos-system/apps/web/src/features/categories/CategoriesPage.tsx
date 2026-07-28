@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Edit, Trash2, Tags } from 'lucide-react'
+import { Plus, Edit, Trash2, Tags, Search } from 'lucide-react'
 import api from '@/lib/api'
 import { Table } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
@@ -32,6 +32,7 @@ export default function CategoriesPage() {
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState<Category | null>(null)
   const [deleteItem, setDeleteItem] = useState<Category | null>(null)
+  const [search, setSearch] = useState('')
   const qc = useQueryClient()
 
   const { data: categories = [], isLoading } = useQuery<Category[]>({
@@ -40,6 +41,12 @@ export default function CategoriesPage() {
       const res = (await api.get('/categories')).data
       return Array.isArray(res) ? res : (res?.data ?? [])
     },
+  })
+
+  const filtered = categories.filter((c) => {
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return c.name.toLowerCase().includes(q) || (c.description ?? '').toLowerCase().includes(q)
   })
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
@@ -86,11 +93,21 @@ export default function CategoriesPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Categorías</h1>
-          <p className="page-subtitle">{categories.length} categorías registradas</p>
+          <p className="page-subtitle">{filtered.length} de {categories.length} categorías</p>
         </div>
         <Button variant="primary" leftIcon={<Plus size={16} />} onClick={openCreate}>
           Nueva categoría
         </Button>
+      </div>
+
+      <div className="mb-5">
+        <Input
+          placeholder="Buscar categoría..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          leftIcon={<Search size={16} />}
+          className="w-full sm:max-w-xs"
+        />
       </div>
 
       <Table
@@ -125,7 +142,7 @@ export default function CategoriesPage() {
             ),
           },
         ]}
-        data={categories}
+        data={filtered}
         loading={isLoading}
         keyExtractor={(c) => c.id}
         emptyMessage="No hay categorías"

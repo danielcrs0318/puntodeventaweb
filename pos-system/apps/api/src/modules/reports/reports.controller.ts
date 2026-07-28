@@ -25,8 +25,18 @@ export class ReportsController {
     @CurrentBranchId() branchId: number,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
   ) {
-    return this.reportsService.getSalesReport(from, to, branchId)
+    return this.reportsService.getSalesReport(
+      from,
+      to,
+      branchId,
+      page ? +page : 1,
+      limit ? +limit : 20,
+      search,
+    )
   }
 
   @Get('products')
@@ -34,8 +44,11 @@ export class ReportsController {
     @CurrentBranchId() branchId: number,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('search') search?: string,
   ) {
-    return this.reportsService.getProductsReport(from, to, branchId)
+    return this.reportsService.getProductsReport(from, to, branchId, +page, +limit, search)
   }
 
   @Get('cashiers')
@@ -48,8 +61,13 @@ export class ReportsController {
   }
 
   @Get('inventory')
-  getInventoryReport(@CurrentBranchId() branchId: number) {
-    return this.reportsService.getInventoryReport(branchId)
+  getInventoryReport(
+    @CurrentBranchId() branchId: number,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('search') search?: string,
+  ) {
+    return this.reportsService.getInventoryReport(branchId, +page, +limit, search)
   }
 
   @Get('gross-profit')
@@ -57,8 +75,11 @@ export class ReportsController {
     @CurrentBranchId() branchId: number,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('search') search?: string,
   ) {
-    return this.reportsService.getGrossProfitReport(from, to, branchId)
+    return this.reportsService.getGrossProfitReport(from, to, branchId, +page, +limit, search)
   }
 
   @Get('export/pdf')

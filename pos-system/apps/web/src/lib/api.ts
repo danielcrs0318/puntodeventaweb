@@ -2,8 +2,11 @@ import axios from 'axios'
 import { useAuthStore } from '@/store/authStore'
 import { getApiErrorMessage, logClientError } from '@/lib/errors'
 
+/** En prod: VITE_API_BASE_URL=https://api.tudominio.com  o deja /api si nginx hace proxy */
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || '/api'
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
   timeout: 30000,
 })
@@ -57,7 +60,7 @@ api.interceptors.response.use(
       }
 
       try {
-        const res = await axios.post('/api/auth/refresh', { refreshToken })
+        const res = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken })
         const { accessToken, user, refreshToken: newRefresh, branches, activeBranch } = res.data
         useAuthStore.getState().setAuth(user, accessToken, newRefresh, branches, activeBranch)
         api.defaults.headers.common.Authorization = `Bearer ${accessToken}`
@@ -79,3 +82,4 @@ api.interceptors.response.use(
 )
 
 export default api
+export { API_BASE }

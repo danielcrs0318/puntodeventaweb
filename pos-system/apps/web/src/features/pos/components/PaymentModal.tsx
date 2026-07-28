@@ -162,7 +162,7 @@ export function PaymentModal({
         {/* Método de pago */}
         <div>
           <p className="label mb-2">Método de pago</p>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {methodButtons.map((btn) => (
               <button
                 key={btn.value}

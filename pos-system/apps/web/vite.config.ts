@@ -30,5 +30,18 @@ export default defineConfig({
   preview: {
     host: '0.0.0.0',
     port: Number(process.env.VITE_PREVIEW_PORT ?? 4173),
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (p) => p.replace(/^\/api/, ''),
+      },
+      '/uploads': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
 })

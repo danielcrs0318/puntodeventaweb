@@ -2,28 +2,27 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
   ShoppingCart,
-  Package,
   Receipt,
-  Settings,
+  DollarSign,
+  Menu,
 } from 'lucide-react'
-import { useAuthStore } from '@/store/authStore'
+
+interface MobileNavProps {
+  onOpenMore: () => void
+}
 
 const mobileItems = [
   { to: '/dashboard', label: 'Panel', icon: <LayoutDashboard size={22} /> },
   { to: '/pos', label: 'Venta', icon: <ShoppingCart size={22} /> },
-  { to: '/products', label: 'Productos', icon: <Package size={22} />, roles: ['admin', 'supervisor', 'inventario'] },
   { to: '/sales', label: 'Ventas', icon: <Receipt size={22} /> },
-  { to: '/settings', label: 'Ajustes', icon: <Settings size={22} />, roles: ['admin'] },
+  { to: '/cash-register', label: 'Caja', icon: <DollarSign size={22} /> },
 ]
 
-export function MobileNav() {
-  const { hasRole } = useAuthStore()
-  const visible = mobileItems.filter((item) => !item.roles || hasRole(item.roles))
-
+export function MobileNav({ onOpenMore }: MobileNavProps) {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-bg-secondary border-t border-border-subtle safe-area-bottom">
       <div className="flex items-stretch justify-around">
-        {visible.map((item) => (
+        {mobileItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -38,6 +37,15 @@ export function MobileNav() {
             <span>{item.label}</span>
           </NavLink>
         ))}
+        <button
+          type="button"
+          onClick={onOpenMore}
+          className="flex flex-col items-center justify-center gap-0.5 flex-1 py-2 touch-target text-xs font-medium text-text-secondary"
+          aria-label="Más opciones del menú"
+        >
+          <Menu size={22} />
+          <span>Más</span>
+        </button>
       </div>
     </nav>
   )

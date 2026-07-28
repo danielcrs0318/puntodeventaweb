@@ -27,16 +27,17 @@ export function Modal({
   children,
   footer,
   size = 'md',
-  closeOnBackdrop = true,
+  closeOnBackdrop = false,
 }: ModalProps) {
-  // Cerrar con Escape
+  // Escape solo cierra si también se permite backdrop (comportamiento explícito)
   useEffect(() => {
+    if (!closeOnBackdrop) return
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) onClose()
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [isOpen, onClose])
+  }, [isOpen, onClose, closeOnBackdrop])
 
   // Bloquear scroll del body
   useEffect(() => {

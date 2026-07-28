@@ -66,12 +66,13 @@ export class SalesController {
     @Query('customerId') customerId?: string,
     @Query('status') status?: string,
     @Query('paymentMethod') paymentMethod?: string,
+    @Query('search') search?: string,
   ) {
     return this.salesService.findAll({
       page: +page, limit: +limit, from, to,
       userId: userId ? +userId : undefined,
       customerId: customerId ? +customerId : undefined,
-      status, paymentMethod, branchId,
+      status, paymentMethod, branchId, search,
     })
   }
 
