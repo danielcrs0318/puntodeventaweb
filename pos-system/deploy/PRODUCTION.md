@@ -85,7 +85,12 @@ Si el admin ya existe, no se sobrescribe la contraseña.
 | Variable | Ejemplo / notas |
 |----------|-----------------|
 | `NODE_ENV` | `production` |
-| `DATABASE_URL` | URI de Aiven con `?sslaccept=accept_invalid_certs` (no `strict` / no `ssl-mode`) |
+| `DATABASE_URL` | URI de Aiven. Si la clave tiene `# @ % & +`, mejor usa `DB_*` (abajo) |
+| `DB_USER` | `avnadmin` (alternativa a URI) |
+| `DB_PASSWORD` | Contraseña **cruda** de Aiven (sin encodear) |
+| `DB_HOST` | `mysql-….aivencloud.com` |
+| `DB_PORT` | Puerto de Aiven (ej. `17003`) |
+| `DB_NAME` | `defaultdb` |
 | `JWT_SECRET` | Aleatorio ≥ 24 caracteres (Render puede generarlo) |
 | `FRONTEND_URL` | `https://tu-app.vercel.app` (sin barra final) |
 | `JWT_EXPIRES_IN` | `15m` |
