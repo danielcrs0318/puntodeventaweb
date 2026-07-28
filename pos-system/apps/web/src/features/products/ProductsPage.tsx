@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Edit, Trash2, Package, Upload } from 'lucide-react'
-import api from '@/lib/api'
+import api, { resolveMediaUrl } from '@/lib/api'
 import { Table } from '@/components/ui/Table'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -124,7 +124,7 @@ export default function ProductsPage() {
             render: (p) => (
               <div className="w-10 h-10 rounded-lg bg-bg-secondary flex items-center justify-center overflow-hidden">
                 {p.imageUrl
-                  ? <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                  ? <img src={resolveMediaUrl(p.imageUrl)} alt={p.name} className="w-full h-full object-cover" />
                   : <Package size={18} className="text-text-secondary opacity-40" />
                 }
               </div>

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
 import { toast } from '@/components/ui/Toast'
-import api from '@/lib/api'
+import api, { resolveMediaUrl } from '@/lib/api'
 
 const schema = z.object({
   sku: z.string().min(1, 'El SKU es requerido'),
@@ -107,7 +107,7 @@ export function ProductFormModal({ isOpen, onClose, product, onSuccess }: Produc
         unitType: (product.unitType as string) ?? 'UNIDAD',
         minStockAlert: (product as { inventory?: { minStockAlert?: number } }).inventory?.minStockAlert ?? 5,
       })
-      if (product.imageUrl) setImagePreview(product.imageUrl as string)
+      if (product.imageUrl) setImagePreview(resolveMediaUrl(product.imageUrl as string) ?? null)
     } else if (!product && isOpen) {
       reset({ taxRate: 0.15, unitType: 'UNIDAD', minStockAlert: 5, initialStock: 0 })
       setImagePreview(null)

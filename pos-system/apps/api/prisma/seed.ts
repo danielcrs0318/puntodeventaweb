@@ -1,6 +1,10 @@
 import { PrismaClient } from '@prisma/client'
 import * as bcrypt from 'bcrypt'
 
+/**
+ * Seed de DESARROLLO: incluye categorías, productos y proveedor de ejemplo.
+ * En producción NO uses este archivo — usa: npm run prisma:seed:prod
+ */
 const prisma = new PrismaClient()
 
 async function main() {

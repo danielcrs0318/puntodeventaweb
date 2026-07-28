@@ -1,0 +1,34 @@
+# Blueprint Render — API NestJS
+# Dashboard: New → Blueprint → seleccionar este repo
+# O crea un Web Service manual con Root Directory = pos-system/apps/api
+
+services:
+  - type: web
+    name: pos-honduras-api
+    runtime: node
+    plan: free
+    rootDir: pos-system/apps/api
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    startCommand: npx prisma db push && npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # Obligatorias — configúralas en el dashboard de Render:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      # Opcionales (correo):
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false

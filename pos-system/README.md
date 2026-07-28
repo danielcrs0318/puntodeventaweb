@@ -13,11 +13,15 @@ Monorepo del POS Honduras.
 
 Sigue la guía completa en la raíz del repo: [README.md](../README.md).
 
-Resumen:
+Resumen (desarrollo local):
 
 1. Copia `apps/api/.env.example` → `apps/api/.env.development` y configura MySQL + JWT (+ Resend si aplica).
 2. En `apps/api`: `npm install` → `npx prisma db push` → `npx prisma db seed` → `npm run start:dev`
 3. En `apps/web`: `npm install` → `npm run dev`
+
+Producción (Vercel + Render + Aiven, **sin** datos de ejemplo):
+
+Ver [deploy/PRODUCTION.md](./deploy/PRODUCTION.md). Usa `npm run prisma:seed:prod` (no `prisma db seed`).
 
 ## Documentación de producto
 

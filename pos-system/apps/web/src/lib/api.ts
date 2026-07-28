@@ -2,8 +2,27 @@ import axios from 'axios'
 import { useAuthStore } from '@/store/authStore'
 import { getApiErrorMessage, logClientError } from '@/lib/errors'
 
-/** En prod: VITE_API_BASE_URL=https://api.tudominio.com  o deja /api si nginx hace proxy */
+/** En prod (Vercel): VITE_API_BASE_URL=https://tu-api.onrender.com — sin barra final ni /api */
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || '/api'
+
+/** Origen del API para /uploads cuando el front y el back están en dominios distintos */
+function apiOrigin(): string | null {
+  if (!API_BASE || API_BASE === '/api' || API_BASE.startsWith('/')) return null
+  try {
+    return new URL(API_BASE).origin
+  } catch {
+    return null
+  }
+}
+
+/** Convierte /uploads/... relativo a URL absoluta del API en producción */
+export function resolveMediaUrl(url?: string | null): string | undefined {
+  if (!url) return undefined
+  if (/^https?:\/\//i.test(url) || url.startsWith('blob:') || url.startsWith('data:')) return url
+  const origin = apiOrigin()
+  if (!origin) return url
+  return url.startsWith('/') ? `${origin}${url}` : `${origin}/${url}`
+}
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -82,4 +101,4 @@ api.interceptors.response.use(
 )
 
 export default api
-export { API_BASE }
+export { API_BASE, resolveMediaUrl }

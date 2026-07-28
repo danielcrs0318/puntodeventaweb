@@ -8,6 +8,7 @@ import { join, extname } from 'path'
 import { diskStorage } from 'multer'
 import { v4 as uuidv4 } from 'uuid'
 
+import { AppController } from './app.controller'
 import { PrismaModule } from './prisma/prisma.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { UsersModule } from './modules/users/users.module'
@@ -68,6 +69,7 @@ const envFiles = [
     SettingsModule,
     AuditModule,
   ],
+  controllers: [AppController],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: BranchInterceptor },
     { provide: APP_GUARD, useClass: ThrottlerGuard },

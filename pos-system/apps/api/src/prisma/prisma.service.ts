@@ -39,7 +39,12 @@ function buildDatabaseUrl(): string {
   const encPass = encodeURIComponent(password)
   const url = provider.includes('postgres') || provider.includes('postgresql')
     ? `postgresql://${user}:${encPass}@${host}:${port}/${name}?schema=public`
-    : `mysql://${user}:${encPass}@${host}:${port}/${name}`
+    : `mysql://${user}:${encPass}@${host}:${port}/${name}${
+        (env.BDD_SSL ?? env.bddssl ?? '').toString().toLowerCase() === 'true' ||
+        (env.NODE_ENV === 'production' && !host.includes('localhost') && !host.includes('127.0.0.1'))
+          ? '?sslaccept=strict'
+          : ''
+      }`
 
   console.log('Prisma built database URL:', url.replace(/:[^:@]*@/, ':*****@'))
   return url

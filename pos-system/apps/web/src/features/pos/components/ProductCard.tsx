@@ -1,5 +1,6 @@
 import { Package, Plus } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { resolveMediaUrl } from '@/lib/api'
 
 interface Product {
   id: number
@@ -40,7 +41,7 @@ export function ProductCard({ product, onAdd, inCart }: ProductCardProps) {
       <div className="w-full aspect-square bg-bg-secondary flex items-center justify-center overflow-hidden">
         {product.imageUrl ? (
           <img
-            src={product.imageUrl}
+            src={resolveMediaUrl(product.imageUrl)}
             alt={product.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
           />

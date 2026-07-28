@@ -217,52 +217,52 @@ Si el API está en marcha, deténlo antes de `prisma generate` (Windows puede bl
 
 ## Despliegue a producción
 
-### 1. Backend
+Guía detallada (Vercel + Render + Aiven): [`pos-system/deploy/PRODUCTION.md`](./pos-system/deploy/PRODUCTION.md)
+
+Resumen rápido:
+
+| Pieza | Dónde |
+|-------|--------|
+| Frontend | Vercel → root `pos-system/apps/web`, env `VITE_API_BASE_URL` = URL del API |
+| Backend | Render → root `pos-system/apps/api` (o Blueprint `render.yaml`) |
+| MySQL | Aiven → `DATABASE_URL` con `?sslaccept=strict` |
+
+**No uses** `npx prisma db seed` en producción (incluye productos de ejemplo).
+
+Bootstrap solo admin (una vez, desde tu PC contra Aiven):
+
+```bash
+cd pos-system/apps/api
+# PowerShell
+$env:DATABASE_URL="mysql://USER:PASS@HOST:PORT/DB?sslaccept=strict"
+$env:ADMIN_PASSWORD="TuClaveSegura!"
+npx prisma db push
+npm run prisma:seed:prod
+```
+
+Checklist:
+
+1. `JWT_SECRET` fuerte (≥24 chars)
+2. `FRONTEND_URL` = URL de Vercel (CORS)
+3. `VITE_API_BASE_URL` = URL de Render (sin `/api`)
+4. Login con el admin del seed de producción y cambia la contraseña
+5. Carpeta `uploads/` en Render es efímera en plan free
+
+### Alternativa: VPS + nginx
 
 ```bash
 cd pos-system/apps/api
 cp .env.example .env.production
-# Edita: DATABASE_URL, JWT_SECRET (≥24 chars), FRONTEND_URL, RESEND_*, NODE_ENV=production
+# Edita: DATABASE_URL, JWT_SECRET, FRONTEND_URL, RESEND_*, NODE_ENV=production
 npm ci
 npx prisma generate
-npx prisma db push   # o migraciones SQL si la BD ya existe
+npx prisma db push
+npm run prisma:seed:prod   # no uses prisma:seed
 npm run build
 NODE_ENV=production npm run start:prod
 ```
 
-Checklist API:
-
-- `JWT_SECRET` fuerte (obligatorio; el arranque falla si es débil)
-- `FRONTEND_URL` = URL pública del POS (CORS)
-- `RESEND_API_KEY` si usas correos
-- Carpeta `uploads/` persistente (volumen en VPS/Docker)
-- Swagger desactivado salvo `ENABLE_SWAGGER=true`
-
-### 2. Frontend
-
-```bash
-cd pos-system/apps/web
-npm ci
-npm run build
-# Dist en: apps/web/dist
-```
-
-Con nginx (recomendado) **no** hace falta `VITE_API_BASE_URL`: el proxy `/api` y `/uploads` apunta al Nest. Plantilla: [`pos-system/deploy/nginx.conf.example`](./pos-system/deploy/nginx.conf.example).
-
-Si el API está en otro dominio:
-
-```bash
-# .env.production del web
-VITE_API_BASE_URL=https://api.tudominio.com
-npm run build
-```
-
-### 3. Post-despliegue
-
-1. Cambia la contraseña de `admin@pos.hn`
-2. Crea sucursales y asigna cajeros
-3. Prueba: login → abrir caja → venta → recibo en **pestaña nueva** (el POS no debe navegar al PDF)
-4. Cierre de caja y un reporte
+Frontend con nginx (proxy `/api` y `/uploads`): plantilla [`pos-system/deploy/nginx.conf.example`](./pos-system/deploy/nginx.conf.example). En ese caso no hace falta `VITE_API_BASE_URL`.
 
 ---
 
@@ -270,3 +270,4 @@ npm run build
 
 - Spec del producto y reglas de diseño: [`AGENT_INSTRUCTIONS_POS.md`](./AGENT_INSTRUCTIONS_POS.md)
 - Notas del monorepo: [`pos-system/README.md`](./pos-system/README.md)
+- Despliegue Vercel/Render/Aiven: [`pos-system/deploy/PRODUCTION.md`](./pos-system/deploy/PRODUCTION.md)
