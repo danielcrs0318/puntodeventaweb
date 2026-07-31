@@ -41,7 +41,10 @@ export default function SuppliersPage() {
 
   const { data: suppliers = [], isLoading } = useQuery<Supplier[]>({
     queryKey: ['suppliers'],
-    queryFn: async () => (await api.get('/suppliers')).data,
+    queryFn: async () => {
+      const res = (await api.get('/suppliers')).data
+      return Array.isArray(res) ? res : (res?.data ?? [])
+    },
   })
 
   const { data: purchasesData, isLoading: loadingPurchases } = useQuery<{ data: Purchase[]; total: number }>({

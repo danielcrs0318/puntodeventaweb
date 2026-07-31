@@ -34,3 +34,14 @@ services:
         sync: false
       - key: RESEND_FROM
         sync: false
+      # Cloudflare R2 (imágenes — obligatorias en producción)
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false

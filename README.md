@@ -225,7 +225,8 @@ Resumen rápido:
 |-------|--------|
 | Frontend | Vercel → root `pos-system/apps/web`, env `VITE_API_BASE_URL` = URL del API |
 | Backend | Render → root `pos-system/apps/api` (o Blueprint `render.yaml`) |
-| MySQL | Aiven → `DATABASE_URL` con `?sslaccept=strict` |
+| MySQL | Aiven → `DATABASE_URL` / `DB_*` con SSL (`sslaccept=accept_invalid_certs`) |
+| Imágenes | Cloudflare R2 → vars `R2_*` en Render |
 
 **No uses** `npx prisma db seed` en producción (incluye productos de ejemplo).
 
@@ -245,8 +246,38 @@ Checklist:
 1. `JWT_SECRET` fuerte (≥24 chars)
 2. `FRONTEND_URL` = URL de Vercel (CORS)
 3. `VITE_API_BASE_URL` = URL de Render (sin `/api`)
-4. Login con el admin del seed de producción y cambia la contraseña
-5. Carpeta `uploads/` en Render es efímera en plan free
+4. Variables `R2_*` en Render (imágenes)
+5. Login con el admin del seed de producción y cambia la contraseña
+
+### Cloudflare R2 (imágenes en producción)
+
+Las fotos de productos y el logo se guardan en R2. Sin estas variables, el API usa disco local `/uploads` (en Render se pierde al redeploy).
+
+#### Cómo obtener las keys (paso a paso)
+
+1. **Account ID** — Entra a [dash.cloudflare.com](https://dash.cloudflare.com) → **R2 Object Storage** → copia **Account ID** → `R2_ACCOUNT_ID`
+2. **Bucket** — R2 → **Create bucket** (ej. `pos-images`) → `R2_BUCKET_NAME`
+3. **URL pública** — Abre el bucket → **Settings** → **Public access** → Allow Access / enable **R2.dev subdomain** → copia la URL tipo `https://pub-xxxx.r2.dev` → `R2_PUBLIC_URL` (**sin** barra final)
+4. **API Token** — En R2 → **Manage R2 API Tokens** → **Create API token**:
+   - Permissions: **Object Read & Write**
+   - Apply to: el bucket `pos-images` (o All buckets)
+   - Create → copia de inmediato:
+     - **Access Key ID** → `R2_ACCESS_KEY_ID`
+     - **Secret Access Key** → `R2_SECRET_ACCESS_KEY` (solo se muestra una vez)
+
+#### Variables en Render
+
+| Variable | Descripción |
+|----------|-------------|
+| `R2_ACCOUNT_ID` | Account ID de Cloudflare |
+| `R2_ACCESS_KEY_ID` | Access Key del token R2 |
+| `R2_SECRET_ACCESS_KEY` | Secret del token R2 |
+| `R2_BUCKET_NAME` | Nombre del bucket (ej. `pos-images`) |
+| `R2_PUBLIC_URL` | URL pública (`https://pub-xxx.r2.dev`), sin `/` final |
+
+Tras configurar, haz **Manual Deploy** del API. En los logs debe aparecer: `Almacenamiento de imágenes: Cloudflare R2`.
+
+Detalle completo: [`pos-system/deploy/PRODUCTION.md`](./pos-system/deploy/PRODUCTION.md)
 
 ### Alternativa: VPS + nginx
 
@@ -270,4 +301,4 @@ Frontend con nginx (proxy `/api` y `/uploads`): plantilla [`pos-system/deploy/ng
 
 - Spec del producto y reglas de diseño: [`AGENT_INSTRUCTIONS_POS.md`](./AGENT_INSTRUCTIONS_POS.md)
 - Notas del monorepo: [`pos-system/README.md`](./pos-system/README.md)
-- Despliegue Vercel/Render/Aiven: [`pos-system/deploy/PRODUCTION.md`](./pos-system/deploy/PRODUCTION.md)
+- Despliegue Vercel/Render/Aiven/R2: [`pos-system/deploy/PRODUCTION.md`](./pos-system/deploy/PRODUCTION.md)

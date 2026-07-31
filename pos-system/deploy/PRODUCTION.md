@@ -97,10 +97,49 @@ Si el admin ya existe, no se sobrescribe la contraseña.
 | `JWT_REFRESH_EXPIRES_IN` | `7d` |
 | `RESEND_API_KEY` | Opcional; necesario para reset de clave / correos |
 | `RESEND_FROM` | Ej. `POS <noreply@tudominio.com>` |
+| `R2_ACCOUNT_ID` | Cloudflare Account ID |
+| `R2_ACCESS_KEY_ID` | API Token R2 |
+| `R2_SECRET_ACCESS_KEY` | Secret del token |
+| `R2_BUCKET_NAME` | Nombre del bucket |
+| `R2_PUBLIC_URL` | URL pública (`https://pub-xxx.r2.dev` o dominio custom), sin `/` final |
 
-Tras el deploy anota la URL pública, p. ej. `https://pos-honduras-api.onrender.com`.
+### Cloudflare R2 (imágenes) — cómo obtener las keys
 
-**Uploads:** el disco de Render (plan free) es efímero; logos/fotos de producto se pierden al redeploy. Para producción seria, usa un disco persistente o almacenamiento S3.
+Las fotos de productos y el logo se suben a R2. Sin `R2_*`, el API usa disco local `/uploads` (efímero en Render).
+
+#### Paso a paso
+
+1. **Account ID**
+   - Entra a [dash.cloudflare.com](https://dash.cloudflare.com)
+   - Menú → **R2 Object Storage**
+   - Copia **Account ID** → `R2_ACCOUNT_ID`
+
+2. **Crear el bucket**
+   - R2 → **Create bucket**
+   - Nombre, ej. `pos-images` → `R2_BUCKET_NAME`
+   - Create bucket
+
+3. **Acceso público (URL de las imágenes)**
+   - Abre el bucket → pestaña **Settings**
+   - **Public access** → Allow Access / enable **R2.dev subdomain**
+   - Copia la URL tipo `https://pub-xxxxxxxx.r2.dev` → `R2_PUBLIC_URL` (**sin** barra final)
+   - (Opcional) puedes usar un custom domain en lugar del subdominio R2.dev
+
+4. **Access Key y Secret Key**
+   - En R2 → **Manage R2 API Tokens** → **Create API token**
+   - Permissions: **Object Read & Write**
+   - Apply to specific buckets: elige `pos-images` (o All buckets)
+   - Create → copia de inmediato (el secret solo se muestra una vez):
+     - **Access Key ID** → `R2_ACCESS_KEY_ID`
+     - **Secret Access Key** → `R2_SECRET_ACCESS_KEY`
+
+5. **Pegar en Render** las cinco variables `R2_*` y hacer **Manual Deploy**
+
+En los logs del API debe aparecer: `Almacenamiento de imágenes: Cloudflare R2 (bucket=...)`.
+
+Las URLs se guardan absolutas en BD (`https://pub-xxx.r2.dev/products/...` o `/logos/...`). En desarrollo local, sin R2, sigue usando `/uploads`.
+
+Tras el deploy anota la URL pública del API, p. ej. `https://pos-honduras-api.onrender.com`.
 
 ---
 
@@ -144,5 +183,5 @@ Tras el deploy anota la URL pública, p. ej. `https://pos-honduras-api.onrender.
 ## Orden recomendado
 
 ```text
-Aiven (URI) → prisma db push + seed:prod → Render (API) → Vercel (web + VITE_API_BASE_URL) → FRONTEND_URL en Render
+Aiven (URI) → prisma db push + seed:prod → Cloudflare R2 (keys) → Render (API + R2_*) → Vercel (web + VITE_API_BASE_URL) → FRONTEND_URL en Render
 ```

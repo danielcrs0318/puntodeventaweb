@@ -3,6 +3,7 @@ import {
   ParseIntPipe, Query, UseGuards, UseInterceptors, UploadedFile,
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
+import { memoryStorage } from 'multer'
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
 import { ProductsService } from './products.service'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
@@ -112,7 +113,11 @@ export class ProductsController {
   @UseGuards(RolesGuard)
   @Roles('admin', 'supervisor', 'inventario')
   @Post('upload-image')
-  @UseInterceptors(FileInterceptor('file', { fileFilter: imageFileFilter }))
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    fileFilter: imageFileFilter,
+    limits: { fileSize: 5 * 1024 * 1024 },
+  }))
   uploadImage(@UploadedFile() file: Express.Multer.File) {
     return this.productsService.uploadImage(file)
   }

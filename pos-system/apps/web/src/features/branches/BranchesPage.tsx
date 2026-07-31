@@ -40,7 +40,10 @@ export default function BranchesPage() {
 
   const { data: branches = [], isLoading } = useQuery<Branch[]>({
     queryKey: ['branches-admin'],
-    queryFn: async () => (await api.get('/branches')).data,
+    queryFn: async () => {
+      const res = (await api.get('/branches')).data
+      return Array.isArray(res) ? res : (res?.data ?? [])
+    },
   })
 
   const saveMutation = useMutation({

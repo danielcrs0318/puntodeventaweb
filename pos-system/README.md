@@ -23,6 +23,15 @@ Producción (Vercel + Render + Aiven, **sin** datos de ejemplo):
 
 Ver [deploy/PRODUCTION.md](./deploy/PRODUCTION.md). Usa `npm run prisma:seed:prod` (no `prisma db seed`).
 
+### Cloudflare R2 (imágenes)
+
+Guía paso a paso para obtener Account ID, bucket, URL pública y API tokens:
+
+- Raíz del repo: [README.md — Cloudflare R2](../README.md#cloudflare-r2-imágenes-en-producción)
+- Despliegue: [deploy/PRODUCTION.md](./deploy/PRODUCTION.md#cloudflare-r2-imágenes--cómo-obtener-las-keys)
+
+Variables: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` (ver también `apps/api/.env.example`).
+
 ## Documentación de producto
 
 [AGENT_INSTRUCTIONS_POS.md](../AGENT_INSTRUCTIONS_POS.md)

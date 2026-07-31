@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { AppController } from './app.controller'
 import { PrismaModule } from './prisma/prisma.module'
+import { StorageModule } from './modules/storage/storage.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { UsersModule } from './modules/users/users.module'
 import { RolesModule } from './modules/roles/roles.module'
@@ -43,6 +44,7 @@ const envFiles = [
       { name: 'short', ttl: 60_000, limit: 60 },
       { name: 'medium', ttl: 600_000, limit: 600 },
     ]),
+    // Fallback local / archivos legacy; en prod las imágenes nuevas van a R2
     ServeStaticModule.forRoot({ rootPath: uploadsDir, serveRoot: '/uploads' }),
     MulterModule.register({
       storage: diskStorage({
@@ -52,6 +54,7 @@ const envFiles = [
       limits: { fileSize: 5 * 1024 * 1024 },
     }),
     PrismaModule,
+    StorageModule,
     MailModule,
     BranchesModule,
     AuthModule,

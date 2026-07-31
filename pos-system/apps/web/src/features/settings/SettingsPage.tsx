@@ -121,12 +121,18 @@ export default function SettingsPage() {
 
   const { data: roles = [] } = useQuery<{ id: number; name: string }[]>({
     queryKey: ['roles'],
-    queryFn: async () => (await api.get('/roles')).data,
+    queryFn: async () => {
+      const res = (await api.get('/roles')).data
+      return Array.isArray(res) ? res : (res?.data ?? [])
+    },
   })
 
   const { data: branches = [] } = useQuery<BranchItem[]>({
     queryKey: ['branches'],
-    queryFn: async () => (await api.get('/branches')).data,
+    queryFn: async () => {
+      const res = (await api.get('/branches')).data
+      return Array.isArray(res) ? res : (res?.data ?? [])
+    },
     enabled: activeTab === 'usuarios' || showUserForm,
   })
 

@@ -1,8 +1,10 @@
 import { Controller, Get, Patch, Post, Body, UseGuards, UseInterceptors, UploadedFile, Res } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
+import { memoryStorage } from 'multer'
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
 import type { Response } from 'express'
 import { SettingsService } from './settings.service'
+import { StorageService } from '../storage/storage.service'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
@@ -31,7 +33,10 @@ class UpdateSettingsDto {
 @UseGuards(JwtAuthGuard)
 @Controller('settings')
 export class SettingsController {
-  constructor(private settingsService: SettingsService) {}
+  constructor(
+    private settingsService: SettingsService,
+    private storage: StorageService,
+  ) {}
 
   @Get() get() { return this.settingsService.get() }
 
@@ -40,9 +45,13 @@ export class SettingsController {
 
   @UseGuards(RolesGuard) @Roles('admin')
   @Post('logo')
-  @UseInterceptors(FileInterceptor('file', { fileFilter: imageFileFilter }))
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    fileFilter: imageFileFilter,
+    limits: { fileSize: 5 * 1024 * 1024 },
+  }))
   async uploadLogo(@UploadedFile() file: Express.Multer.File) {
-    const url = `/uploads/${file.filename}`
+    const { url } = await this.storage.uploadImage(file, 'logos')
     await this.settingsService.update({ businessLogo: url })
     return { url }
   }

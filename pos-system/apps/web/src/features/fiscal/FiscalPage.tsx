@@ -51,8 +51,8 @@ export default function FiscalPage() {
   const { data: ranges = [], isLoading } = useQuery<CaiRange[]>({
     queryKey: ['cai-ranges'],
     queryFn: async () => {
-      const res = await api.get('/fiscal/cai-ranges')
-      return res.data
+      const res = (await api.get('/fiscal/cai-ranges')).data
+      return Array.isArray(res) ? res : (res?.data ?? [])
     },
   })
 

@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
+import { StorageService } from '../storage/storage.service'
 import * as fs from 'fs'
 import * as path from 'path'
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private storage: StorageService,
+  ) {}
 
   async findAll(page = 1, limit = 20, search?: string, active?: boolean, branchId?: number) {
     const skip = (page - 1) * limit
@@ -156,6 +160,6 @@ export class ProductsService {
   }
 
   uploadImage(file: Express.Multer.File) {
-    return { url: `/uploads/${file.filename}` }
+    return this.storage.uploadImage(file, 'products')
   }
 }
