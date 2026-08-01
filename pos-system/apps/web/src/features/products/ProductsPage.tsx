@@ -69,10 +69,11 @@ export default function ProductsPage() {
   const toggleActive = useMutation({
     mutationFn: ({ id, active }: { id: number; active: boolean }) =>
       api.patch(`/products/${id}`, { isActive: active }),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['products'] })
-      toast.success('Estado actualizado')
+      toast.success(vars.active ? 'Producto activado' : 'Producto desactivado')
     },
+    onError: () => toast.error('No se pudo actualizar el estado'),
   })
 
   return (

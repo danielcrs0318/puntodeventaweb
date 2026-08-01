@@ -1,10 +1,17 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, ParseIntPipe, UseGuards } from '@nestjs/common'
+import {
+  Controller, Get, Post, Patch, Delete, Param, Body, Query,
+  ParseIntPipe, UseGuards,
+} from '@nestjs/common'
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
 import { UsersService } from './users.service'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
-import { IsString, IsEmail, IsOptional, IsInt, IsBoolean, MinLength, IsArray, ArrayMinSize } from 'class-validator'
+import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import {
+  IsString, IsEmail, IsOptional, IsInt, IsBoolean, MinLength,
+  IsArray, ArrayMinSize, Length, Matches,
+} from 'class-validator'
 import { Type } from 'class-transformer'
 
 class CreateUserDto {
@@ -15,7 +22,22 @@ class CreateUserDto {
   @IsOptional() @IsArray() @ArrayMinSize(1) @IsInt({ each: true }) @Type(() => Number)
   branchIds?: number[]
   @IsOptional() @IsInt() @Type(() => Number) defaultBranchId?: number
+  @IsString()
+  @Length(6, 6)
+  @Matches(/^\d{6}$/, { message: 'El PIN debe ser de 6 dígitos' })
+  pin: string
 }
+
+class SendCreatePinDto {
+  @IsString() name: string
+  @IsEmail() email: string
+  @IsString() @MinLength(8) password: string
+  @IsInt() @Type(() => Number) roleId: number
+  @IsOptional() @IsArray() @ArrayMinSize(1) @IsInt({ each: true }) @Type(() => Number)
+  branchIds?: number[]
+  @IsOptional() @IsInt() @Type(() => Number) defaultBranchId?: number
+}
+
 class UpdateUserDto {
   @IsOptional() @IsString() name?: string
   @IsOptional() @IsEmail() email?: string
@@ -51,8 +73,20 @@ export class UsersController {
   }
 
   @Roles('admin')
+  @Post('send-create-pin')
+  sendCreatePin(@Body() dto: SendCreatePinDto, @CurrentUser() user: any) {
+    return this.usersService.sendCreatePin(dto, {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+    })
+  }
+
+  @Roles('admin')
   @Post()
-  create(@Body() dto: CreateUserDto) { return this.usersService.create(dto) }
+  create(@Body() dto: CreateUserDto, @CurrentUser() user: any) {
+    return this.usersService.create(dto, { id: user.id })
+  }
 
   @Roles('admin')
   @Patch(':id')

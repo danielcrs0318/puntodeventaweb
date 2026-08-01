@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DollarSign, Plus, Minus, Lock, Unlock, History, TrendingUp, FileText } from 'lucide-react'
 import api from '@/lib/api'
@@ -14,6 +14,7 @@ import { StatCard } from '@/components/ui/index'
 import { formatCurrency, formatDateTime, openCashCloseReport } from '@/lib/utils'
 import { getApiErrorMessage } from '@/lib/errors'
 import { useCashRegisterStore } from '@/store/cashRegisterStore'
+import { useActiveCashSession } from '@/hooks/useActiveCashSession'
 import { useAuthStore } from '@/store/authStore'
 import { PageLoader } from '@/components/ui/Spinner'
 
@@ -49,19 +50,10 @@ export default function CashRegisterPage() {
   const [movReason, setMovReason] = useState('')
   const [lastClosedSessionId, setLastClosedSessionId] = useState<number | null>(null)
   const [histPage, setHistPage] = useState(1)
-  const { activeSession, openSession, closeSession } = useCashRegisterStore()
   const { user } = useAuthStore()
   const qc = useQueryClient()
-
-  const { data: session, isLoading } = useQuery<CashSession | null>({
-    queryKey: ['active-session'],
-    queryFn: async () => (await api.get('/cash-register/active-session')).data,
-  })
-
-  useEffect(() => {
-    if (session) openSession(session)
-    else if (session === null) closeSession()
-  }, [session, openSession, closeSession])
+  const { session, isLoading } = useActiveCashSession()
+  const closeSession = useCashRegisterStore((s) => s.closeSession)
 
   const { data: movements = [], isLoading: loadingMov } = useQuery<CashMovement[]>({
     queryKey: ['cash-movements', session?.id],
@@ -77,7 +69,10 @@ export default function CashRegisterPage() {
 
   const openMutation = useMutation({
     mutationFn: () => api.post('/cash-register/open', { openingAmount: Number(openAmount) }),
-    onSuccess: (res) => { openSession(res.data); toast.success('Caja abierta'); qc.invalidateQueries({ queryKey: ['active-session'] }) },
+    onSuccess: () => {
+      toast.success('Caja abierta')
+      qc.invalidateQueries({ queryKey: ['active-session'] })
+    },
     onError: (e) => toast.error(getApiErrorMessage(e, 'Error al abrir caja')),
   })
 
@@ -92,7 +87,8 @@ export default function CashRegisterPage() {
       if (data?.id) setLastClosedSessionId(data.id)
       else if (data?.previousSessionId) setLastClosedSessionId(data.previousSessionId)
       toast.success('Caja cerrada')
-      qc.invalidateQueries({ queryKey: ['active-session', 'cash-sessions'] })
+      qc.invalidateQueries({ queryKey: ['active-session'] })
+      qc.invalidateQueries({ queryKey: ['cash-sessions'] })
     },
     onError: (e) => toast.error(getApiErrorMessage(e, 'Error al cerrar caja')),
   })

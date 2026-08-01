@@ -1,16 +1,20 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Eye, EyeOff, Store, Lock, Mail } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
+import { motion, useReducedMotion } from 'motion/react'
 import api from '@/lib/api'
 import { getApiErrorMessage } from '@/lib/errors'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { toast } from '@/components/ui/Toast'
+import { getHomePath } from '@/lib/access'
+import { easeOut, motionDur } from '@/lib/motion'
+import { preloadEntryPages } from '@/lib/prefetch'
 
 const loginSchema = z.object({
   email: z.string().email('Ingresa un correo electrónico válido'),
@@ -22,6 +26,10 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const { setAuth } = useAuthStore()
   const navigate = useNavigate()
+  const reduce = useReducedMotion()
+
+  // Los chunks de entrada se bajan mientras el usuario escribe: al entrar no hay espera.
+  useEffect(() => preloadEntryPages(), [])
 
   const {
     register,
@@ -45,8 +53,12 @@ export default function LoginPage() {
         data.branches ?? [],
         data.activeBranch ?? null,
       )
-      navigate('/dashboard', { replace: true })
-      toast.success('Bienvenido', `Hola, ${data.user.name}`)
+      navigate(getHomePath(), { replace: true })
+      // Se aplaza para no montar el toast (spring + layout) en el mismo cuadro
+      // en que se monta todo el layout privado.
+      window.setTimeout(() => {
+        toast.success('Bienvenido', `Hola, ${data.user.name}`)
+      }, 400)
     },
     onError: (error: unknown) => {
       const err = error as { response?: { status?: number } }
@@ -60,31 +72,45 @@ export default function LoginPage() {
     },
   })
 
+  const auroraPaused = loginMutation.isPending || loginMutation.isSuccess
+
   return (
-    <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4">
-      {/* Fondo decorativo */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -left-40 w-80 h-80 rounded-full bg-accent-muted/20 blur-[120px]" />
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-accent-primary/10 blur-[150px]" />
+    <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4 overflow-hidden">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div className={`login-aurora login-aurora--a ${auroraPaused ? 'login-aurora--paused' : ''}`} />
+        <div className={`login-aurora login-aurora--b ${auroraPaused ? 'login-aurora--paused' : ''}`} />
       </div>
 
-      <div className="relative w-full max-w-md">
-        {/* Logo y título */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent-primary mb-4 shadow-glow-accent">
+      <motion.div
+        className="relative w-full max-w-md"
+        initial={reduce ? false : { opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: motionDur.slow, ease: easeOut }}
+      >
+        <motion.div
+          className="text-center mb-8"
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: motionDur.base, ease: easeOut }}
+        >
+          <motion.div
+            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent-primary mb-4 shadow-glow-accent"
+            whileHover={reduce ? undefined : { scale: 1.04 }}
+            whileTap={reduce ? undefined : { scale: 0.97 }}
+          >
             <Store size={32} className="text-white" />
-          </div>
+          </motion.div>
           <h1 className="text-3xl font-bold text-text-primary">POS Honduras</h1>
-          <p className="text-text-secondary mt-1 text-sm">
-            Sistema de Punto de Venta
-          </p>
-        </div>
+          <p className="text-text-secondary mt-1 text-sm">Sistema de Punto de Venta</p>
+        </motion.div>
 
-        {/* Formulario */}
-        <div className="card p-8">
-          <h2 className="text-lg font-semibold text-text-primary mb-6">
-            Iniciar Sesión
-          </h2>
+        <motion.div
+          className="card p-8"
+          initial={reduce ? false : { opacity: 0, y: 14, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ delay: 0.1, duration: motionDur.slow, ease: easeOut }}
+        >
+          <h2 className="text-lg font-semibold text-text-primary mb-6">Iniciar Sesión</h2>
 
           <form
             onSubmit={handleSubmit((data) => loginMutation.mutate(data))}
@@ -153,12 +179,12 @@ export default function LoginPage() {
               </Link>
             </p>
           </div>
-        </div>
+        </motion.div>
 
         <p className="text-center text-xs text-text-secondary mt-6">
           POS Honduras &copy; {new Date().getFullYear()} — Todos los derechos reservados
         </p>
-      </div>
+      </motion.div>
     </div>
   )
 }

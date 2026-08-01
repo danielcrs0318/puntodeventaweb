@@ -5,19 +5,22 @@ import { Throttle } from '@nestjs/throttler'
 import { AuthService } from './auth.service'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
-import { IsString, IsNotEmpty } from 'class-validator'
+import { IsString, IsNotEmpty, IsEmail, MinLength } from 'class-validator'
 
 class RefreshDto {
   @IsString() @IsNotEmpty() refreshToken: string
 }
 
 class ForgotPasswordDto {
-  @IsString() @IsNotEmpty() email: string
+  @IsEmail({}, { message: 'Correo electrónico inválido' })
+  @IsNotEmpty()
+  email: string
 }
 
 class ResetPasswordDto {
   @IsString() @IsNotEmpty() token: string
-  @IsString() @IsNotEmpty() password: string
+  @IsString() @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
+  password: string
 }
 
 @ApiTags('Autenticación')

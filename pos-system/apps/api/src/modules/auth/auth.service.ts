@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../../prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
+import { BranchesService } from '../branches/branches.service'
 import * as bcrypt from 'bcrypt'
 import { createHash, randomBytes } from 'crypto'
 import { v4 as uuidv4 } from 'uuid'
@@ -16,15 +17,27 @@ export class AuthService {
     private jwtService: JwtService,
     private config: ConfigService,
     private mailService: MailService,
+    private branchesService: BranchesService,
   ) {}
 
   private hashResetToken(token: string) {
     return createHash('sha256').update(token).digest('hex')
   }
 
+  private normalizeEmail(email: string) {
+    return email.trim().toLowerCase()
+  }
+
+  private frontendBaseUrl() {
+    return (this.config.get<string>('FRONTEND_URL', 'http://localhost:3000') || 'http://localhost:3000')
+      .trim()
+      .replace(/\/$/, '')
+  }
+
   async validateUser(email: string, password: string) {
+    const normalized = this.normalizeEmail(email)
     const user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: normalized },
       include: { role: { include: { permissions: { include: { permission: true } } } } },
     })
     if (!user) throw new UnauthorizedException('Credenciales incorrectas')
@@ -54,35 +67,14 @@ export class AuthService {
       data: { userId: user.id, action: 'LOGIN', entity: 'User', entityId: user.id, details: {} },
     })
 
-    let branches: { id: number; code: string; name: string; isMain: boolean; isDefault: boolean }[] = []
-    if (user.role.name === 'admin') {
-      const all = await this.prisma.branch.findMany({
-        where: { isActive: true },
-        orderBy: [{ isMain: 'desc' }, { name: 'asc' }],
-      })
-      branches = all.map((b) => ({
-        id: b.id,
-        code: b.code,
-        name: b.name,
-        isMain: b.isMain,
-        isDefault: b.isMain,
-      }))
-    } else {
-      const links = await this.prisma.userBranch.findMany({
-        where: { userId: user.id, branch: { isActive: true } },
-        include: { branch: true },
-        orderBy: [{ isDefault: 'desc' }, { branchId: 'asc' }],
-      })
-      branches = links.map((l) => ({
-        id: l.branch.id,
-        code: l.branch.code,
-        name: l.branch.name,
-        isMain: l.branch.isMain,
-        isDefault: l.isDefault,
-      }))
-    }
-
+    const branches = await this.branchesService.resolveUserBranches(user.id, user.role.name)
     const activeBranch = branches.find((b) => b.isDefault) ?? branches[0] ?? null
+
+    if (!activeBranch) {
+      this.logger.warn(
+        `Usuario ${user.email} inició sesión sin sucursal activa asignada (rol ${user.role.name})`,
+      )
+    }
 
     return {
       accessToken,
@@ -121,7 +113,8 @@ export class AuthService {
   async forgotPassword(email: string) {
     const genericMessage =
       'Si el correo está registrado, recibirás instrucciones para restablecer tu contraseña.'
-    const user = await this.prisma.user.findUnique({ where: { email } })
+    const normalized = this.normalizeEmail(email)
+    const user = await this.prisma.user.findUnique({ where: { email: normalized } })
     if (!user || !user.isActive) {
       return { message: genericMessage }
     }
@@ -137,22 +130,26 @@ export class AuthService {
       },
     })
 
-    const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000')
-    const resetUrl = `${frontendUrl}/reset-password?token=${token}`
+    const resetUrl = `${this.frontendBaseUrl()}/reset-password?token=${token}`
 
     try {
-      const mailResult = await this.mailService.sendPasswordReset(user.email, user.name, resetUrl)
+      const settings = await this.prisma.settings.findFirst()
+      const mailResult = await this.mailService.sendPasswordReset(
+        user.email,
+        user.name,
+        resetUrl,
+        settings?.businessName ?? 'POS Honduras',
+      )
       if (!mailResult.sent) {
         this.logger.log(
-          `[password-reset] Resend off — userId=${user.id} email=${email} resetUrl=${resetUrl}`,
+          `[password-reset] Resend off — userId=${user.id} email=${normalized} resetUrl=${resetUrl}`,
         )
       }
     } catch (err: unknown) {
       this.logger.error(
-        `Error enviando correo de recuperación a ${email}`,
+        `Error enviando correo de recuperación a ${normalized}`,
         err instanceof Error ? err.stack : String(err),
       )
-      // En desarrollo sin Resend seguimos devolviendo el enlace
       if (process.env.NODE_ENV === 'production' && this.mailService.isConfigured()) {
         throw new BadRequestException('No se pudo enviar el correo de recuperación. Intenta más tarde.')
       }
@@ -164,7 +161,7 @@ export class AuthService {
         action: 'PASSWORD_RESET_REQUESTED',
         entity: 'User',
         entityId: user.id,
-        details: { email, mailConfigured: this.mailService.isConfigured() },
+        details: { email: normalized, mailConfigured: this.mailService.isConfigured() },
       },
     })
 
@@ -177,7 +174,14 @@ export class AuthService {
   }
 
   async resetPassword(token: string, newPassword: string) {
-    const hashedToken = this.hashResetToken(token)
+    if (!token?.trim()) {
+      throw new BadRequestException('El enlace de recuperación es inválido o ha expirado')
+    }
+    if (!newPassword || newPassword.length < 8) {
+      throw new BadRequestException('La contraseña debe tener al menos 8 caracteres')
+    }
+
+    const hashedToken = this.hashResetToken(token.trim())
     const user = await this.prisma.user.findFirst({
       where: {
         passwordResetToken: hashedToken,
@@ -186,12 +190,11 @@ export class AuthService {
       },
     })
 
-    // Compatibilidad con tokens en texto plano generados antes del hash
     const legacyUser =
       user ??
       (await this.prisma.user.findFirst({
         where: {
-          passwordResetToken: token,
+          passwordResetToken: token.trim(),
           passwordResetExpires: { gt: new Date() },
           isActive: true,
         },
@@ -200,11 +203,10 @@ export class AuthService {
     if (!legacyUser) {
       throw new BadRequestException('El enlace de recuperación es inválido o ha expirado')
     }
-    const targetUser = legacyUser
 
     const passwordHash = await bcrypt.hash(newPassword, 12)
     await this.prisma.user.update({
-      where: { id: targetUser.id },
+      where: { id: legacyUser.id },
       data: {
         passwordHash,
         passwordResetToken: null,
@@ -217,10 +219,10 @@ export class AuthService {
 
     await this.prisma.auditLog.create({
       data: {
-        userId: targetUser.id,
+        userId: legacyUser.id,
         action: 'PASSWORD_RESET_COMPLETED',
         entity: 'User',
-        entityId: targetUser.id,
+        entityId: legacyUser.id,
         details: {},
       },
     })

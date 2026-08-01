@@ -10,11 +10,15 @@ import {
   DollarSign,
   Building2,
 } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useAuthStore } from '@/store/authStore'
 import { useCashRegisterStore } from '@/store/cashRegisterStore'
 import { useCartStore } from '@/store/cartStore'
+import { useActiveCashSession } from '@/hooks/useActiveCashSession'
+import { rolesFor } from '@/lib/access'
 import { formatDateTime } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
+import { toast } from '@/components/ui/Toast'
 
 interface TopbarProps {
   onMenuToggle: () => void
@@ -22,12 +26,18 @@ interface TopbarProps {
 }
 
 export function Topbar({ onMenuToggle, desktopCollapsed }: TopbarProps) {
-  const { user, logout, branches, activeBranch, setActiveBranch } = useAuthStore()
-  const { activeSession, clearSession } = useCashRegisterStore()
+  const { user, logout, branches, activeBranch, setActiveBranch, hasRole } = useAuthStore()
+  const clearSession = useCashRegisterStore((s) => s.clearSession)
+  const { session: activeSession } = useActiveCashSession()
   const clearCart = useCartStore((s) => s.clearCart)
   const itemCount = useCartStore((s) => s.itemCount())
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const reduce = useReducedMotion()
+
+  const canUsePos = hasRole([...rolesFor('pos')])
+  const canUseCash = hasRole([...rolesFor('cash-register')])
+  const canViewReports = hasRole([...rolesFor('reports')])
 
   const handleLogout = () => {
     logout()
@@ -41,13 +51,14 @@ export function Topbar({ onMenuToggle, desktopCollapsed }: TopbarProps) {
     clearSession()
     clearCart()
     qc.clear()
+    toast.info('Sucursal cambiada', `Ahora operas en ${next.name}`)
   }
 
   return (
     <header
       className={[
         'fixed top-0 right-0 h-16 bg-bg-secondary border-b border-border-subtle z-30',
-        'flex items-center px-3 sm:px-4 gap-2 sm:gap-3 transition-all duration-250',
+        'flex items-center px-3 sm:px-4 gap-2 sm:gap-3 transition-[left] duration-200 ease-out',
         desktopCollapsed ? 'md:left-[72px]' : 'md:left-64',
         'left-0',
       ].join(' ')}
@@ -85,9 +96,17 @@ export function Topbar({ onMenuToggle, desktopCollapsed }: TopbarProps) {
         </div>
       )}
 
+      {canUseCash && (
       <div className="flex items-center gap-2 flex-shrink-0">
+        <AnimatePresence mode="wait" initial={false}>
         {activeSession ? (
-          <div className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-success-muted border border-green-700/40">
+          <motion.div
+            key="open"
+            initial={reduce ? false : { opacity: 0, scale: 0.92, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94 }}
+            className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-success-muted border border-green-700/40"
+          >
             <DollarSign size={14} className="text-green-400" />
             <div className="hidden md:block">
               <p className="text-xs font-medium text-green-400 leading-none">Caja Abierta</p>
@@ -95,19 +114,28 @@ export function Topbar({ onMenuToggle, desktopCollapsed }: TopbarProps) {
                 {formatDateTime(activeSession.openedAt)}
               </p>
             </div>
-          </div>
+          </motion.div>
         ) : (
-          <div className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-warning-muted border border-yellow-700/40">
+          <motion.div
+            key="closed"
+            initial={reduce ? false : { opacity: 0, scale: 0.92, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94 }}
+            className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-warning-muted border border-yellow-700/40"
+          >
             <AlertTriangle size={14} className="text-yellow-400" />
             <span className="text-xs font-medium text-yellow-400 hidden lg:block">
               Sin caja abierta
             </span>
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
+      )}
 
       <div className="flex-1 min-w-2" />
 
+      {canUsePos && (
       <Button
         variant="primary"
         size="sm"
@@ -117,13 +145,24 @@ export function Topbar({ onMenuToggle, desktopCollapsed }: TopbarProps) {
       >
         <span className="hidden md:inline">Nueva Venta</span>
         <span className="md:hidden">Venta</span>
-        {itemCount > 0 && (
-          <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-danger text-white text-xs flex items-center justify-center font-bold">
-            {itemCount > 9 ? '9+' : itemCount}
-          </span>
-        )}
+        <AnimatePresence>
+          {itemCount > 0 && (
+            <motion.span
+              key={itemCount}
+              initial={reduce ? false : { scale: 0, rotate: -20 }}
+              animate={{ scale: 1, rotate: 0 }}
+              exit={{ scale: 0 }}
+              transition={{ type: 'spring', stiffness: 550, damping: 24 }}
+              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-danger text-white text-xs flex items-center justify-center font-bold"
+            >
+              {itemCount > 9 ? '9+' : itemCount}
+            </motion.span>
+          )}
+        </AnimatePresence>
       </Button>
+      )}
 
+      {canViewReports && (
       <button
         type="button"
         className="relative p-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors hidden sm:inline-flex"
@@ -132,6 +171,7 @@ export function Topbar({ onMenuToggle, desktopCollapsed }: TopbarProps) {
       >
         <Bell size={18} />
       </button>
+      )}
 
       <div className="flex items-center gap-1.5 sm:gap-2 pl-2 sm:pl-3 border-l border-border-subtle flex-shrink-0">
         <div className="w-8 h-8 rounded-full bg-accent-muted flex items-center justify-center flex-shrink-0">

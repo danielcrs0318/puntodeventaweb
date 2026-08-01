@@ -18,6 +18,7 @@ import { Table } from '@/components/ui/Table'
 import { toast } from '@/components/ui/Toast'
 import { PageLoader } from '@/components/ui/Spinner'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { getApiErrorMessage } from '@/lib/errors'
 
 type SettingsTab = 'negocio' | 'impuestos' | 'usuarios' | 'seguridad' | 'fiscal'
 
@@ -95,6 +96,10 @@ export default function SettingsPage() {
   const [showUserPassword, setShowUserPassword] = useState(false)
   const [userSearch, setUserSearch] = useState('')
   const [userPage, setUserPage] = useState(1)
+  const [createPinStep, setCreatePinStep] = useState(false)
+  const [createPin, setCreatePin] = useState('')
+  const [pendingCreateData, setPendingCreateData] = useState<UserFormData | null>(null)
+  const [devPinHint, setDevPinHint] = useState<string | null>(null)
   const qc = useQueryClient()
   const debouncedUserSearch = useDebouncedValue(userSearch)
   const USER_PAGE_SIZE = 15
@@ -182,7 +187,7 @@ export default function SettingsPage() {
   })
 
   const saveUserMutation = useMutation({
-    mutationFn: (data: UserFormData) => {
+    mutationFn: (data: UserFormData & { pin?: string }) => {
       const branchIds = data.branchIds
       const defaultId =
         data.defaultBranchId && branchIds.includes(Number(data.defaultBranchId))
@@ -190,7 +195,7 @@ export default function SettingsPage() {
           : branchIds[0]
       const payload = {
         name: data.name,
-        email: data.email,
+        email: data.email.trim().toLowerCase(),
         roleId: Number(data.roleId),
         branchIds,
         defaultBranchId: defaultId,
@@ -198,7 +203,8 @@ export default function SettingsPage() {
       }
       if (editUser) return api.patch(`/users/${editUser.id}`, payload)
       if (!data.password) throw new Error('La contraseña es requerida')
-      return api.post('/users', { ...payload, password: data.password })
+      if (!data.pin) throw new Error('Ingresa el PIN de verificación')
+      return api.post('/users', { ...payload, password: data.password, pin: data.pin })
     },
     onSuccess: () => {
       toast.success(editUser ? 'Usuario actualizado' : 'Usuario creado')
@@ -206,6 +212,10 @@ export default function SettingsPage() {
       setShowUserForm(false)
       setEditUser(null)
       setShowUserPassword(false)
+      setCreatePinStep(false)
+      setCreatePin('')
+      setPendingCreateData(null)
+      setDevPinHint(null)
       resetUser({ branchIds: [], password: '' })
     },
     onError: (err: unknown) => {
@@ -214,15 +224,79 @@ export default function SettingsPage() {
     },
   })
 
+  const sendCreatePinMutation = useMutation({
+    mutationFn: async (data: UserFormData) => {
+      if (!data.password) throw new Error('La contraseña es requerida')
+      const branchIds = data.branchIds
+      const defaultId =
+        data.defaultBranchId && branchIds.includes(Number(data.defaultBranchId))
+          ? Number(data.defaultBranchId)
+          : branchIds[0]
+      return (
+        await api.post('/users/send-create-pin', {
+          name: data.name,
+          email: data.email.trim().toLowerCase(),
+          password: data.password,
+          roleId: Number(data.roleId),
+          branchIds,
+          defaultBranchId: defaultId,
+        })
+      ).data as { message: string; email: string; pin?: string }
+    },
+    onSuccess: (res, variables) => {
+      setPendingCreateData(variables)
+      setCreatePinStep(true)
+      setCreatePin('')
+      setDevPinHint(res.pin ?? null)
+      toast.success('PIN enviado', res.message)
+      if (res.pin) {
+        toast.info('Modo desarrollo', `PIN (Resend off): ${res.pin}`)
+        console.info('[POS:user-create-pin]', res.pin)
+      }
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { message?: string } }; message?: string }
+      toast.error('Error', e.response?.data?.message ?? e.message ?? 'No se pudo enviar el PIN')
+    },
+  })
+
+  const resetUserFormState = () => {
+    setShowUserForm(false)
+    setEditUser(null)
+    setShowUserPassword(false)
+    setCreatePinStep(false)
+    setCreatePin('')
+    setPendingCreateData(null)
+    setDevPinHint(null)
+    resetUser({ branchIds: [], password: '' })
+  }
+
+  const submitUserForm = (data: UserFormData) => {
+    if (editUser) {
+      saveUserMutation.mutate(data)
+      return
+    }
+    if (createPinStep && pendingCreateData) {
+      saveUserMutation.mutate({ ...pendingCreateData, pin: createPin.trim() })
+      return
+    }
+    sendCreatePinMutation.mutate(data)
+  }
+
   const deleteUserMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/users/${id}`),
     onSuccess: () => { toast.success('Usuario eliminado'); qc.invalidateQueries({ queryKey: ['users'] }); setDeleteUser(null) },
+    onError: (e) => toast.error('Error', getApiErrorMessage(e, 'No se pudo eliminar el usuario')),
   })
 
   const toggleUserMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
       api.patch(`/users/${id}`, { isActive }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: (_data, vars) => {
+      toast.success(vars.isActive ? 'Usuario activado' : 'Usuario desactivado')
+      qc.invalidateQueries({ queryKey: ['users'] })
+    },
+    onError: (e) => toast.error('Error', getApiErrorMessage(e, 'No se pudo actualizar el usuario')),
   })
 
   const openNewUser = () => {
@@ -534,19 +608,67 @@ export default function SettingsPage() {
       </div>
 
       {/* Modal usuario */}
-      <Modal isOpen={showUserForm} onClose={() => { setShowUserForm(false); setEditUser(null); setShowUserPassword(false); resetUser({ branchIds: [], password: '' }) }}
-        title={editUser ? 'Editar Usuario' : 'Nuevo Usuario'} size="md"
+      <Modal
+        isOpen={showUserForm}
+        onClose={resetUserFormState}
+        title={editUser ? 'Editar Usuario' : createPinStep ? 'Verificar PIN' : 'Nuevo Usuario'}
+        size="md"
         footer={
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => { setShowUserForm(false); setShowUserPassword(false); resetUser({ branchIds: [], password: '' }) }}>Cancelar</Button>
-            <Button variant="primary" onClick={handleUser((d) => saveUserMutation.mutate(d))}
-              loading={saveUserMutation.isPending} id="user-form-submit-btn">
-              {editUser ? 'Guardar' : 'Crear Usuario'}
+            <Button variant="secondary" onClick={resetUserFormState}>Cancelar</Button>
+            {createPinStep && !editUser && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setCreatePinStep(false)
+                  setCreatePin('')
+                  setDevPinHint(null)
+                }}
+              >
+                Volver
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              onClick={handleUser((d) => submitUserForm(d))}
+              loading={saveUserMutation.isPending || sendCreatePinMutation.isPending}
+              id="user-form-submit-btn"
+              disabled={createPinStep && createPin.trim().length !== 6}
+            >
+              {editUser ? 'Guardar' : createPinStep ? 'Confirmar y crear' : 'Enviar PIN y continuar'}
             </Button>
           </div>
         }
       >
         <div className="space-y-4">
+          {createPinStep && !editUser ? (
+            <>
+              <p className="text-sm text-text-secondary">
+                Enviamos un PIN de 6 dígitos a{' '}
+                <strong className="text-text-primary">{pendingCreateData?.email}</strong>.
+                Ingrésalo para completar la creación del usuario.
+              </p>
+              <Input
+                label="PIN de verificación"
+                value={createPin}
+                onChange={(e) => setCreatePin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                inputMode="numeric"
+                autoFocus
+                helperText={devPinHint ? `Desarrollo (Resend off): ${devPinHint}` : 'Revisa el correo del nuevo usuario'}
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={sendCreatePinMutation.isPending}
+                disabled={!pendingCreateData}
+                onClick={() => pendingCreateData && sendCreatePinMutation.mutate(pendingCreateData)}
+              >
+                Reenviar PIN
+              </Button>
+            </>
+          ) : (
+            <>
           <Input label="Nombre completo" error={userErrors.name?.message} required {...regUser('name')} />
           <Input label="Correo electrónico" type="email" error={userErrors.email?.message} required {...regUser('email')} />
           <Input
@@ -634,6 +756,8 @@ export default function SettingsPage() {
               error={userErrors.defaultBranchId?.message}
               {...regUser('defaultBranchId')}
             />
+          )}
+            </>
           )}
         </div>
       </Modal>

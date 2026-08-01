@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
-import { useCashRegisterStore } from '@/store/cashRegisterStore'
+import { useActiveCashSession } from '@/hooks/useActiveCashSession'
 import { formatCurrency, formatDateTime, statusLabel, statusClass } from '@/lib/utils'
 import { StatCard } from '@/components/ui/index'
 import { Badge } from '@/components/ui/Badge'
@@ -27,6 +27,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { PageMotion, Stagger, StaggerItem } from '@/lib/motion'
 
 interface DashboardStats {
   salesToday: number
@@ -48,7 +49,7 @@ interface DashboardStats {
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
-  const { activeSession } = useCashRegisterStore()
+  const { session: activeSession } = useActiveCashSession()
   const navigate = useNavigate()
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
@@ -74,7 +75,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="animate-fade-in">
+    <PageMotion>
       {/* Encabezado */}
       <div className="page-header mb-8">
         <div>
@@ -114,33 +115,41 @@ export default function DashboardPage() {
       )}
 
       {/* KPI Cards — layout asimétrico */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard
-          label="Ventas Hoy"
-          value={String(s.salesToday)}
-          change="transacciones"
-          icon={<ShoppingCart size={20} />}
-        />
-        <StatCard
-          label="Ingresos Hoy"
-          value={formatCurrency(s.totalToday)}
-          change="total del día"
-          changeType="positive"
-          icon={<DollarSign size={20} />}
-        />
-        <StatCard
-          label="Ingresos Semana"
-          value={formatCurrency(s.totalWeek)}
-          icon={<TrendingUp size={20} />}
-        />
-        <StatCard
-          label="Stock Bajo"
-          value={String(s.productsLowStock)}
-          change={s.productsLowStock > 0 ? 'productos requieren atención' : 'todo OK'}
-          changeType={s.productsLowStock > 0 ? 'negative' : 'positive'}
-          icon={<Package size={20} />}
-        />
-      </div>
+      <Stagger className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <StaggerItem>
+          <StatCard
+            label="Ventas Hoy"
+            value={String(s.salesToday)}
+            change="transacciones"
+            icon={<ShoppingCart size={20} />}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Ingresos Hoy"
+            value={formatCurrency(s.totalToday)}
+            change="total del día"
+            changeType="positive"
+            icon={<DollarSign size={20} />}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Ingresos Semana"
+            value={formatCurrency(s.totalWeek)}
+            icon={<TrendingUp size={20} />}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatCard
+            label="Stock Bajo"
+            value={String(s.productsLowStock)}
+            change={s.productsLowStock > 0 ? 'productos requieren atención' : 'todo OK'}
+            changeType={s.productsLowStock > 0 ? 'negative' : 'positive'}
+            icon={<Package size={20} />}
+          />
+        </StaggerItem>
+      </Stagger>
 
       {/* Layout de dos columnas principales */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -299,6 +308,6 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageMotion>
   )
 }

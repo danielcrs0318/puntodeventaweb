@@ -15,6 +15,7 @@ import { ConfirmDialog } from '@/components/ui/index'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { toast } from '@/components/ui/Toast'
 import { PageLoader } from '@/components/ui/Spinner'
+import { getApiErrorMessage } from '@/lib/errors'
 
 interface CaiRange {
   id: number
@@ -93,14 +94,17 @@ export default function FiscalPage() {
       qc.invalidateQueries({ queryKey: ['cai-ranges'] })
       setDeleteRange(null)
     },
+    onError: (e) => toast.error('Error', getApiErrorMessage(e, 'No se pudo eliminar el rango')),
   })
 
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
       api.patch(`/fiscal/cai-ranges/${id}`, { isActive }),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
+      toast.success(vars.isActive ? 'Rango CAI activado' : 'Rango CAI desactivado')
       qc.invalidateQueries({ queryKey: ['cai-ranges'] })
     },
+    onError: (e) => toast.error('Error', getApiErrorMessage(e, 'No se pudo actualizar el rango')),
   })
 
   if (isLoading) return <PageLoader />

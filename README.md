@@ -134,6 +134,15 @@ Copia `pos-system/apps/api/.env.example` → `.env.development`.
 
 \*En producción sí debes configurar Resend para recuperación de contraseña y envío de facturas.
 
+Los correos usan plantillas **React Email** (HTML profesional):
+
+| Correo | Contenido |
+|--------|-----------|
+| Recuperación de contraseña | Nombre, negocio, CTA, enlace y aviso de expiración |
+| Comprobante de venta | Datos del negocio, factura, ítems, ISV, total, pagos y PDF adjunto |
+
+Plantillas: `pos-system/apps/api/src/modules/mail/emails/`.
+
 ---
 
 ## Multi-sucursal (varias tiendas / varios cajeros)

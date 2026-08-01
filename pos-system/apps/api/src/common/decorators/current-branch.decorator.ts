@@ -4,7 +4,9 @@ export const CurrentBranchId = createParamDecorator((_data: unknown, ctx: Execut
   const req = ctx.switchToHttp().getRequest()
   const branchId = req.branchId
   if (!branchId) {
-    throw new BadRequestException('Sucursal no seleccionada. Envía el header X-Branch-Id.')
+    throw new BadRequestException(
+      'Tu usuario no tiene una sucursal activa asignada. Pide al administrador que te asigne una sucursal.',
+    )
   }
   return branchId as number
 })

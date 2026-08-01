@@ -128,6 +128,18 @@ model User {
   @@map("users")
 }
 
+model PendingUserCreation {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique @db.VarChar(255)
+  pinHash   String   @map("pin_hash") @db.VarChar(255)
+  payload   Json
+  expiresAt DateTime @map("expires_at")
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("pending_user_creations")
+}
+
 // ─────────────────────────────────────────────
 // CATEGORÍAS
 // ─────────────────────────────────────────────

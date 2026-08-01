@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import api from '@/lib/api'
 import { useCartStore } from '@/store/cartStore'
-import { useCashRegisterStore } from '@/store/cashRegisterStore'
+import { useActiveCashSession } from '@/hooks/useActiveCashSession'
 import { formatCurrency, calculateChange } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -50,7 +50,7 @@ export default function PosPage() {
   const [showCart, setShowCart] = useState(false) // móvil
   const searchRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
-  const { activeSession } = useCashRegisterStore()
+  const { session: activeSession } = useActiveCashSession()
   const { user } = useAuthStore()
 
   const {
@@ -108,7 +108,9 @@ export default function PosPage() {
 
   const handleAddProduct = (product: Product) => {
     if ((product.inventory?.quantity ?? 0) <= 0) {
-      toast.warning('Sin stock', `${product.name} no tiene unidades disponibles`)
+      toast.warning('Sin stock', `${product.name} no tiene unidades disponibles`, {
+        position: 'top-left',
+      })
       return
     }
     addItem({
@@ -119,7 +121,7 @@ export default function PosPage() {
       taxRate: product.taxRate,
       imageUrl: product.imageUrl,
     })
-    toast.success('Agregado', product.name)
+    toast.success('Agregado al carrito', product.name, { position: 'top-left', duration: 2500 })
   }
 
   // Alerta si no hay caja

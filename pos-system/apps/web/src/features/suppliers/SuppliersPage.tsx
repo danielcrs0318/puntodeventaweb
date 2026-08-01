@@ -69,6 +69,7 @@ export default function SuppliersPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/suppliers/${id}`),
     onSuccess: () => { toast.success('Proveedor eliminado'); qc.invalidateQueries({ queryKey: ['suppliers'] }); setDeleteSupplier(null) },
+    onError: () => toast.error('Error al eliminar el proveedor'),
   })
 
   const purchaseMutation = useMutation({
@@ -91,6 +92,7 @@ export default function SuppliersPage() {
       qc.invalidateQueries({ queryKey: ['purchases'] })
       qc.invalidateQueries({ queryKey: ['inventory'] })
     },
+    onError: () => toast.error('Error al completar la compra'),
   })
 
   const addPurchaseItem = () => setPurchaseItems((prev) => [...prev, { productId: 0, productName: '', quantity: 1, unitCost: 0 }])

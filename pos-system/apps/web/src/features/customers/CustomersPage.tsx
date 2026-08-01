@@ -79,6 +79,7 @@ export default function CustomersPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/customers/${id}`),
     onSuccess: () => { toast.success('Cliente eliminado'); qc.invalidateQueries({ queryKey: ['customers'] }); setDeleteCustomer(null) },
+    onError: () => toast.error('Error al eliminar el cliente'),
   })
 
   const openHistory = (c: Customer) => {

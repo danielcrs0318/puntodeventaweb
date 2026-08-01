@@ -146,7 +146,9 @@ export class SalesService {
 
     const total = subtotal + taxTotal
 
-    return this.prisma.$transaction(async (tx) => {
+    const stockChanges: Awaited<ReturnType<InventoryService['decreaseStock']>>[] = []
+
+    const sale = await this.prisma.$transaction(async (tx) => {
       const seq = await tx.documentSequence.upsert({
         where: { branchId_type: { branchId, type: 'RECIBO' } },
         create: { branchId, type: 'RECIBO', nextNumber: 2 },
@@ -192,7 +194,9 @@ export class SalesService {
       })
 
       for (const item of data.items) {
-        await this.inventoryService.decreaseStock(item.productId, branchId, item.quantity, userId, tx)
+        stockChanges.push(
+          await this.inventoryService.decreaseStock(item.productId, branchId, item.quantity, userId, tx),
+        )
       }
 
       if (settings.fiscalInvoicingEnabled) {
@@ -232,6 +236,9 @@ export class SalesService {
 
       return sale
     })
+
+    this.inventoryService.notifyStockChanges(stockChanges)
+    return sale
   }
 
   async voidSale(
@@ -447,15 +454,53 @@ export class SalesService {
 
     const pdfBuffer = await this.generateReceipt(saleId, branchId)
     const currency = settings.currencySymbol ?? 'L.'
-    const total = `${currency} ${Number(sale.total).toFixed(2)}`
+    const money = (n: unknown) =>
+      `${currency} ${Number(n ?? 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`
+    const paymentLabels: Record<string, string> = {
+      EFECTIVO: 'Efectivo',
+      TARJETA: 'Tarjeta',
+      TRANSFERENCIA: 'Transferencia',
+      MIXTO: 'Mixto',
+    }
+
+    const items = (sale.items ?? []).map((item) => ({
+      name: item.product?.name ?? 'Producto',
+      quantity: Number(item.quantity),
+      unitPrice: money(item.unitPrice),
+      subtotal: money(item.subtotal ?? Number(item.unitPrice) * Number(item.quantity)),
+    }))
+
+    const payments = (sale.payments ?? []).map((p) => ({
+      method: paymentLabels[p.method] ?? p.method,
+      amount: money(p.amount),
+    }))
+
+    const saleDate = new Date(sale.createdAt).toLocaleString('es-HN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
 
     try {
       const result = await this.mailService.sendSaleReceipt({
         to,
         customerName: sale.customer?.name ?? 'Cliente',
         businessName: settings.businessName ?? 'POS Honduras',
+        businessAddress: settings.address,
+        businessPhone: settings.phone,
         invoiceNumber: sale.fiscalInvoice?.fullInvoiceNumber ?? sale.invoiceNumber,
-        total,
+        saleDate,
+        cashierName: sale.user?.name,
+        branchName: sale.branch?.name,
+        items,
+        subtotal: money(sale.subtotal ?? 0),
+        tax: money(sale.taxTotal ?? 0),
+        discount: money(sale.discountTotal ?? 0),
+        total: money(sale.total),
+        payments,
+        notes: sale.notes,
         pdfBuffer,
       })
 

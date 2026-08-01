@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller'
 import { JwtStrategy } from './strategies/jwt.strategy'
 import { LocalStrategy } from './strategies/local.strategy'
 import { UsersModule } from '../users/users.module'
+import { BranchesModule } from '../branches/branches.module'
 import { resolveJwtSecret } from '../../common/utils/jwt-secret'
 
 @Module({
@@ -20,6 +21,7 @@ import { resolveJwtSecret } from '../../common/utils/jwt-secret'
       }),
     }),
     UsersModule,
+    BranchesModule,
   ],
   providers: [AuthService, JwtStrategy, LocalStrategy],
   controllers: [AuthController],

@@ -44,7 +44,8 @@ export function Button({
   return (
     <button
       className={[
-        'inline-flex items-center justify-center font-medium rounded border transition-all duration-150 cursor-pointer select-none',
+        'inline-flex items-center justify-center font-medium rounded border cursor-pointer select-none',
+        'transition-[color,background-color,border-color,box-shadow,transform,opacity] duration-150 ease-out',
         variantClasses[variant],
         sizeClasses[size],
         fullWidth ? 'w-full' : '',
@@ -57,7 +58,7 @@ export function Button({
       {...props}
     >
       {loading ? (
-        <Loader2 size={16} className="animate-spin" />
+        <Loader2 size={16} className="animate-spin [will-change:transform]" />
       ) : (
         leftIcon
       )}

@@ -1,6 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
 
+export interface UserBranchView {
+  id: number
+  code: string
+  name: string
+  isMain: boolean
+  isDefault: boolean
+}
+
 @Injectable()
 export class BranchesService {
   constructor(private prisma: PrismaService) {}
@@ -59,7 +67,7 @@ export class BranchesService {
       })
 
       // Crear filas de inventario en 0 para productos existentes
-      const products = await tx.product.findMany({ where: { isActive: true }, select: { id: true } })
+      const products = await tx.product.findMany({ select: { id: true } })
       if (products.length) {
         await tx.inventory.createMany({
           data: products.map((p) => ({
@@ -139,6 +147,68 @@ export class BranchesService {
     })
 
     return this.getUserBranches(userId)
+  }
+
+  /**
+   * Sucursales visibles para un usuario, con autoreparación:
+   * admin = todas las activas; un usuario sin ninguna asignación recibe la matriz
+   * (sin asignación no puede operar en ningún módulo).
+   * Si tiene asignaciones pero todas están inactivas, no se reasigna nada.
+   */
+  async resolveUserBranches(userId: number, roleName?: string): Promise<UserBranchView[]> {
+    if (roleName === 'admin') {
+      const all = await this.prisma.branch.findMany({
+        where: { isActive: true },
+        orderBy: [{ isMain: 'desc' }, { name: 'asc' }],
+      })
+      return all.map((b) => ({
+        id: b.id,
+        code: b.code,
+        name: b.name,
+        isMain: b.isMain,
+        isDefault: b.isMain,
+      }))
+    }
+
+    const links = await this.prisma.userBranch.findMany({
+      where: { userId, branch: { isActive: true } },
+      include: { branch: true },
+      orderBy: [{ isDefault: 'desc' }, { branchId: 'asc' }],
+    })
+    if (links.length) {
+      return links.map((l) => ({
+        id: l.branch.id,
+        code: l.branch.code,
+        name: l.branch.name,
+        isMain: l.branch.isMain,
+        isDefault: l.isDefault,
+      }))
+    }
+
+    const hasAnyLink = await this.prisma.userBranch.count({ where: { userId } })
+    if (hasAnyLink > 0) return []
+
+    const fallback = await this.prisma.branch.findFirst({
+      where: { isActive: true },
+      orderBy: [{ isMain: 'desc' }, { id: 'asc' }],
+    })
+    if (!fallback) return []
+
+    await this.prisma.userBranch.upsert({
+      where: { userId_branchId: { userId, branchId: fallback.id } },
+      create: { userId, branchId: fallback.id, isDefault: true },
+      update: { isDefault: true },
+    })
+
+    return [
+      {
+        id: fallback.id,
+        code: fallback.code,
+        name: fallback.name,
+        isMain: fallback.isMain,
+        isDefault: true,
+      },
+    ]
   }
 
   async getUserBranches(userId: number) {

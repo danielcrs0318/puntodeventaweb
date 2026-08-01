@@ -1,6 +1,8 @@
 import { useEffect, type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Button } from './Button'
+import { easeOut, motionDur, scaleIn } from '@/lib/motion'
 
 interface ModalProps {
   isOpen: boolean
@@ -29,7 +31,8 @@ export function Modal({
   size = 'md',
   closeOnBackdrop = false,
 }: ModalProps) {
-  // Escape solo cierra si también se permite backdrop (comportamiento explícito)
+  const reduce = useReducedMotion()
+
   useEffect(() => {
     if (!closeOnBackdrop) return
     const handler = (e: KeyboardEvent) => {
@@ -39,7 +42,6 @@ export function Modal({
     return () => document.removeEventListener('keydown', handler)
   }, [isOpen, onClose, closeOnBackdrop])
 
-  // Bloquear scroll del body
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden'
@@ -51,36 +53,46 @@ export function Modal({
     }
   }, [isOpen])
 
-  if (!isOpen) return null
-
   return (
-    <div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-title"
-      onClick={closeOnBackdrop ? onClose : undefined}
-    >
-      <div
-        className={`modal ${sizeClasses[size]} w-full`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h2 id="modal-title" className="text-lg font-semibold text-text-primary">
-            {title}
-          </h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            aria-label="Cerrar modal"
+    <AnimatePresence>
+      {isOpen ? (
+        <motion.div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-title"
+          onClick={closeOnBackdrop ? onClose : undefined}
+          initial={reduce ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: motionDur.fast }}
+        >
+          <motion.div
+            className={`modal ${sizeClasses[size]} w-full`}
+            onClick={(e) => e.stopPropagation()}
+            initial={reduce ? false : scaleIn.initial}
+            animate={scaleIn.animate}
+            exit={scaleIn.exit}
+            transition={{ duration: motionDur.base, ease: easeOut }}
           >
-            <X size={18} />
-          </Button>
-        </div>
-        <div className="modal-body">{children}</div>
-        {footer && <div className="modal-footer">{footer}</div>}
-      </div>
-    </div>
+            <div className="modal-header">
+              <h2 id="modal-title" className="text-lg font-semibold text-text-primary">
+                {title}
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                aria-label="Cerrar modal"
+              >
+                <X size={18} />
+              </Button>
+            </div>
+            <div className="modal-body">{children}</div>
+            {footer && <div className="modal-footer">{footer}</div>}
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   )
 }

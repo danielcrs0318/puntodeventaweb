@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { useCashRegisterStore } from './cashRegisterStore'
+import { useCartStore } from './cartStore'
 
 export interface BranchInfo {
   id: number
@@ -50,19 +52,30 @@ export const useAuthStore = create<AuthState>()(
       branches: [],
       activeBranch: null,
 
-      setAuth: (user, accessToken, refreshToken, branches = [], activeBranch = null) =>
+      setAuth: (user, accessToken, refreshToken, branches = [], activeBranch = null) => {
+        // La sucursal activa debe existir entre las asignadas al usuario que inicia sesión
+        const allowed =
+          activeBranch && branches.some((b) => b.id === activeBranch.id)
+            ? activeBranch
+            : null
+
         set({
           user,
           accessToken,
           refreshToken,
           isAuthenticated: true,
           branches,
-          activeBranch: activeBranch ?? branches.find((b) => b.isDefault) ?? branches[0] ?? null,
-        }),
+          activeBranch: allowed ?? branches.find((b) => b.isDefault) ?? branches[0] ?? null,
+        })
+      },
 
       setActiveBranch: (branch) => set({ activeBranch: branch }),
 
-      logout: () =>
+      logout: () => {
+        // Caja y carrito son por usuario y sucursal: no deben sobrevivir al cierre de sesión
+        useCashRegisterStore.getState().clearSession()
+        useCartStore.getState().clearCart()
+
         set({
           user: null,
           accessToken: null,
@@ -70,7 +83,8 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           branches: [],
           activeBranch: null,
-        }),
+        })
+      },
 
       hasRole: (roles: string[]) => {
         const user = get().user

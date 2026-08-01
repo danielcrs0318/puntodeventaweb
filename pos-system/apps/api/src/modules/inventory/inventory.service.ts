@@ -1,10 +1,24 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
 import { Prisma } from '@prisma/client'
+import { MailService } from '../mail/mail.service'
+
+export interface StockChangeResult {
+  productId: number
+  branchId: number
+  previousQuantity: number
+  newQuantity: number
+  minStockAlert: number
+}
 
 @Injectable()
 export class InventoryService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(InventoryService.name)
+
+  constructor(
+    private prisma: PrismaService,
+    private mail: MailService,
+  ) {}
 
   async getStock(
     branchId: number,
@@ -15,6 +29,8 @@ export class InventoryService {
   ) {
     const skip = (page - 1) * limit
     const searchTerm = search?.trim() || null
+
+    await this.ensureBranchInventory(branchId)
 
     // Comparar quantity vs min_stock_alert requiere SQL (Prisma no compara columnas)
     if (stockStatus) {
@@ -120,6 +136,32 @@ export class InventoryService {
     return { data, total, page, limit }
   }
 
+  /**
+   * Crea en 0 las filas de inventario faltantes de la sucursal. Necesario para
+   * sucursales creadas después de los productos: sin fila el producto no aparece.
+   */
+  async ensureBranchInventory(branchId: number) {
+    const missing = await this.prisma.product.findMany({
+      where: { isActive: true, inventory: { none: { branchId } } },
+      select: { id: true },
+    })
+    if (!missing.length) return 0
+
+    const result = await this.prisma.inventory.createMany({
+      data: missing.map((p) => ({
+        productId: p.id,
+        branchId,
+        quantity: 0,
+        minStockAlert: 5,
+      })),
+      skipDuplicates: true,
+    })
+    this.logger.log(
+      `Inventario inicializado para sucursal ${branchId}: ${result.count} productos`,
+    )
+    return result.count
+  }
+
   async ensureInventoryRow(
     productId: number,
     branchId: number,
@@ -137,14 +179,15 @@ export class InventoryService {
   async adjust(productId: number, branchId: number, quantity: number, reason: string, userId: number) {
     await this.ensureInventoryRow(productId, branchId)
 
-    return this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ quantity: any }>>`
-        SELECT quantity FROM inventory
+    const change = await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ quantity: any; min_stock_alert: any }>>`
+        SELECT quantity, min_stock_alert FROM inventory
         WHERE product_id = ${productId} AND branch_id = ${branchId}
         FOR UPDATE
       `
       if (!rows.length) throw new NotFoundException('Producto sin registro de inventario en esta sucursal')
       const previousQuantity = Number(rows[0].quantity)
+      const minStockAlert = Number(rows[0].min_stock_alert)
       const delta = quantity - previousQuantity
 
       await tx.inventory.update({
@@ -170,7 +213,18 @@ export class InventoryService {
           details: { previousQuantity, newQuantity: quantity, reason, branchId },
         },
       })
+
+      return {
+        productId,
+        branchId,
+        previousQuantity,
+        newQuantity: quantity,
+        minStockAlert,
+      } satisfies StockChangeResult
     })
+
+    void this.notifyLowStockIfNeeded(change)
+    return { ok: true, ...change }
   }
 
   async decreaseStock(
@@ -179,9 +233,24 @@ export class InventoryService {
     quantity: number,
     userId: number,
     tx?: Prisma.TransactionClient,
-  ) {
+  ): Promise<StockChangeResult> {
     const db = tx ?? this.prisma
     await this.ensureInventoryRow(productId, branchId, db)
+
+    const locked = await db.$queryRaw<Array<{ quantity: any; min_stock_alert: any }>>`
+      SELECT quantity, min_stock_alert FROM inventory
+      WHERE product_id = ${productId} AND branch_id = ${branchId}
+      FOR UPDATE
+    `
+    if (!locked.length) {
+      throw new NotFoundException('Producto sin registro de inventario en esta sucursal')
+    }
+    const previousQuantity = Number(locked[0].quantity)
+    const minStockAlert = Number(locked[0].min_stock_alert)
+
+    if (previousQuantity < quantity) {
+      throw new BadRequestException(`Stock insuficiente para el producto ${productId} en esta sucursal`)
+    }
 
     // Decremento atómico para concurrencia (varias cajas a la vez)
     const result = await db.$executeRaw`
@@ -195,9 +264,7 @@ export class InventoryService {
       throw new BadRequestException(`Stock insuficiente para el producto ${productId} en esta sucursal`)
     }
 
-    const inv = await db.inventory.findUnique({
-      where: { productId_branchId: { productId, branchId } },
-    })
+    const newQuantity = previousQuantity - quantity
     await db.inventoryMovement.create({
       data: {
         productId,
@@ -208,7 +275,21 @@ export class InventoryService {
         reason: 'Venta',
       },
     })
-    return Number(inv?.quantity ?? 0)
+
+    const change: StockChangeResult = {
+      productId,
+      branchId,
+      previousQuantity,
+      newQuantity,
+      minStockAlert,
+    }
+
+    // Si no hay transacción externa, notificar de inmediato
+    if (!tx) {
+      void this.notifyLowStockIfNeeded(change)
+    }
+
+    return change
   }
 
   async increaseStock(
@@ -240,5 +321,81 @@ export class InventoryService {
       },
     })
     return Number(inv?.quantity ?? 0)
+  }
+
+  /**
+   * Envía correo solo al cruzar el umbral (evitar spam mientras ya está bajo).
+   * - AGOTADO: pasó de >0 a <=0
+   * - BAJO: pasó de >min a <=min (y aún >0)
+   */
+  shouldNotifyLowStock(change: StockChangeResult): 'BAJO' | 'AGOTADO' | null {
+    const { previousQuantity: prev, newQuantity: next, minStockAlert: min } = change
+    if (next <= 0 && prev > 0) return 'AGOTADO'
+    if (next > 0 && next <= min && prev > min) return 'BAJO'
+    return null
+  }
+
+  async notifyLowStockIfNeeded(change: StockChangeResult): Promise<void> {
+    const status = this.shouldNotifyLowStock(change)
+    if (!status) return
+
+    try {
+      const [product, branch, settings, admins] = await Promise.all([
+        this.prisma.product.findUnique({
+          where: { id: change.productId },
+          select: { name: true, sku: true },
+        }),
+        this.prisma.branch.findUnique({
+          where: { id: change.branchId },
+          select: { name: true },
+        }),
+        this.prisma.settings.findFirst(),
+        this.prisma.user.findMany({
+          where: {
+            isActive: true,
+            role: { name: { in: ['admin', 'supervisor'] } },
+          },
+          select: { email: true },
+        }),
+      ])
+
+      if (!product || !branch) return
+
+      const recipients = new Set<string>()
+      if (settings?.email?.trim()) recipients.add(settings.email.trim())
+      for (const u of admins) {
+        if (u.email?.trim()) recipients.add(u.email.trim())
+      }
+
+      if (!recipients.size) {
+        this.logger.warn(
+          `Stock ${status} en producto ${change.productId} pero no hay destinatarios de correo`,
+        )
+        return
+      }
+
+      await this.mail.sendLowStockAlert({
+        to: [...recipients],
+        businessName: settings?.businessName ?? 'POS Honduras',
+        productName: product.name,
+        sku: product.sku ?? undefined,
+        branchName: branch.name,
+        quantity: change.newQuantity,
+        minStockAlert: change.minStockAlert,
+        status,
+      })
+    } catch (err: unknown) {
+      this.logger.error(
+        `Error enviando alerta de stock bajo (producto ${change.productId})`,
+        err instanceof Error ? err.stack : String(err),
+      )
+    }
+  }
+
+  /** Notifica varios cambios (p. ej. tras una venta); no falla la operación principal. */
+  notifyStockChanges(changes: StockChangeResult[]): void {
+    for (const change of changes) {
+      void this.notifyLowStockIfNeeded(change)
+    }
   }
 }

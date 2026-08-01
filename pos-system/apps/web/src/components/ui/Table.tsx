@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { motion, useReducedMotion } from 'motion/react'
 import { Spinner } from './Spinner'
+import { easeOut } from '@/lib/motion'
 
 export interface Column<T> {
   key: string
@@ -53,6 +55,8 @@ export function Table<T>({
   onRowClick,
   minWidth = '720px',
 }: TableProps<T>) {
+  const reduce = useReducedMotion()
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -80,10 +84,14 @@ export function Table<T>({
       {/* Vista móvil: tarjetas */}
       <div className="md:hidden space-y-3">
         {data.map((row) => (
-          <div
+          <motion.div
             key={keyExtractor(row)}
             className={`card p-4 space-y-2.5 ${onRowClick ? 'cursor-pointer active:bg-bg-hover' : ''}`}
             onClick={onRowClick ? () => onRowClick(row) : undefined}
+            initial={reduce ? false : { opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.14, ease: easeOut }}
+            whileTap={reduce || !onRowClick ? undefined : { scale: 0.985 }}
           >
             {mobileColumns.map((col) => (
               <div key={col.key} className="flex items-start justify-between gap-4 text-sm">
@@ -95,7 +103,7 @@ export function Table<T>({
                 </span>
               </div>
             ))}
-          </div>
+          </motion.div>
         ))}
       </div>
 
@@ -134,10 +142,13 @@ export function Table<T>({
           </thead>
           <tbody>
             {data.map((row) => (
-              <tr
+              <motion.tr
                 key={keyExtractor(row)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 className={onRowClick ? 'cursor-pointer' : ''}
+                initial={reduce ? false : { opacity: 0, y: 7 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.12, ease: easeOut }}
               >
                 {columns.map((col) => {
                   const content = col.render
@@ -157,7 +168,7 @@ export function Table<T>({
                     </td>
                   )
                 })}
-              </tr>
+              </motion.tr>
             ))}
           </tbody>
         </table>

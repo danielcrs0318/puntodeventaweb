@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common'
 import { Observable } from 'rxjs'
 import { PrismaService } from '../../prisma/prisma.service'
+import { BranchesService } from '../../modules/branches/branches.service'
 
 /**
  * Resuelve la sucursal activa desde el header X-Branch-Id (o query branchId).
@@ -15,7 +16,10 @@ import { PrismaService } from '../../prisma/prisma.service'
  */
 @Injectable()
 export class BranchInterceptor implements NestInterceptor {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private branchesService: BranchesService,
+  ) {}
 
   async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<unknown>> {
     const req = context.switchToHttp().getRequest()
@@ -79,6 +83,12 @@ export class BranchInterceptor implements NestInterceptor {
       include: { branch: true },
       orderBy: [{ isDefault: 'desc' }, { branchId: 'asc' }],
     })
-    return link?.branch ?? null
+    if (link?.branch) return link.branch
+
+    // Usuario sin ninguna asignación: se repara con la matriz para que pueda operar
+    const resolved = await this.branchesService.resolveUserBranches(userId, roleName)
+    const target = resolved.find((b) => b.isDefault) ?? resolved[0]
+    if (!target) return null
+    return this.prisma.branch.findFirst({ where: { id: target.id, isActive: true } })
   }
 }

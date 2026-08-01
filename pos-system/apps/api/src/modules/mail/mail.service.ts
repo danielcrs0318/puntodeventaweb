@@ -1,6 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Resend } from 'resend'
+import { render } from '@react-email/render'
+import * as React from 'react'
+import { PasswordResetEmail } from './emails/password-reset'
+import {
+  SaleReceiptEmail,
+  type SaleReceiptEmailProps,
+} from './emails/sale-receipt'
+import { UserCreatePinEmail } from './emails/user-create-pin'
+import {
+  LowStockAlertEmail,
+  type LowStockAlertEmailProps,
+} from './emails/low-stock-alert'
 
 @Injectable()
 export class MailService {
@@ -71,58 +83,152 @@ export class MailService {
     return { sent: true }
   }
 
-  async sendPasswordReset(to: string, userName: string, resetUrl: string) {
-    const html = `
-      <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#0B1220">
-        <h2 style="color:#2563EB">Recuperación de contraseña</h2>
-        <p>Hola ${userName},</p>
-        <p>Recibimos una solicitud para restablecer tu contraseña del sistema POS.</p>
-        <p style="margin:24px 0">
-          <a href="${resetUrl}" style="background:#2563EB;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:bold">
-            Restablecer contraseña
-          </a>
-        </p>
-        <p>Este enlace expira en 1 hora. Si no solicitaste este cambio, ignora este mensaje.</p>
-        <p style="color:#64748b;font-size:12px">Si el botón no funciona, copia y pega esta URL:<br/>${resetUrl}</p>
-      </div>
-    `
+  async sendPasswordReset(
+    to: string,
+    userName: string,
+    resetUrl: string,
+    businessName = 'POS Honduras',
+  ) {
+    const html = await render(
+      React.createElement(PasswordResetEmail, {
+        userName,
+        resetUrl,
+        businessName,
+        expiresInHours: 1,
+      }),
+    )
     return this.sendMail({
       to,
-      subject: 'Recuperación de contraseña — POS',
+      subject: `Recuperación de contraseña — ${businessName}`,
       html,
-      text: `Hola ${userName}. Restablece tu contraseña en: ${resetUrl}`,
+      text: `Hola ${userName}. Restablece tu contraseña de ${businessName} en: ${resetUrl} (válido 1 hora).`,
     })
   }
 
-  async sendSaleReceipt(options: {
+  async sendUserCreatePin(options: {
     to: string
-    customerName: string
-    businessName: string
-    invoiceNumber: string
-    total: string
-    pdfBuffer: Buffer
+    userName: string
+    userEmail: string
+    pin: string
+    businessName?: string
+    adminName?: string
+    expiresMinutes?: number
   }) {
-    const html = `
-      <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#0B1220">
-        <h2 style="color:#2563EB">${options.businessName}</h2>
-        <p>Hola ${options.customerName},</p>
-        <p>Adjuntamos el comprobante de tu compra.</p>
-        <ul>
-          <li><strong>Factura/Recibo:</strong> ${options.invoiceNumber}</li>
-          <li><strong>Total:</strong> ${options.total}</li>
-        </ul>
-        <p>Gracias por su preferencia.</p>
-      </div>
-    `
+    const businessName = options.businessName ?? 'POS Honduras'
+    const expiresMinutes = options.expiresMinutes ?? 15
+    const html = await render(
+      React.createElement(UserCreatePinEmail, {
+        adminName: options.adminName,
+        userName: options.userName,
+        userEmail: options.userEmail,
+        pin: options.pin,
+        businessName,
+        expiresMinutes,
+      }),
+    )
     return this.sendMail({
       to: options.to,
-      subject: `Comprobante ${options.invoiceNumber} — ${options.businessName}`,
+      subject: `PIN para crear usuario — ${businessName}`,
       html,
-      text: `Comprobante ${options.invoiceNumber}. Total: ${options.total}`,
+      text: `PIN ${options.pin} para crear el usuario ${options.userName} (${options.userEmail}). Válido ${expiresMinutes} minutos.`,
+    })
+  }
+
+  async sendLowStockAlert(
+    options: LowStockAlertEmailProps & { to: string | string[] },
+  ) {
+    const businessName = options.businessName ?? 'POS Honduras'
+    const recipients = Array.isArray(options.to) ? options.to : [options.to]
+    const unique = [...new Set(recipients.map((e) => e.trim().toLowerCase()).filter(Boolean))]
+    if (!unique.length) {
+      this.logger.warn('sendLowStockAlert: sin destinatarios')
+      return { sent: false }
+    }
+
+    const html = await render(
+      React.createElement(LowStockAlertEmail, {
+        businessName,
+        productName: options.productName,
+        sku: options.sku,
+        branchName: options.branchName,
+        quantity: options.quantity,
+        minStockAlert: options.minStockAlert,
+        status: options.status,
+      }),
+    )
+
+    const subject =
+      options.status === 'AGOTADO'
+        ? `Agotado: ${options.productName} — ${businessName}`
+        : `Stock bajo: ${options.productName} — ${businessName}`
+
+    const text = [
+      `${businessName} — alerta de inventario`,
+      `Estado: ${options.status}`,
+      `Producto: ${options.productName}${options.sku ? ` (${options.sku})` : ''}`,
+      `Sucursal: ${options.branchName}`,
+      `Cantidad: ${options.quantity}`,
+      `Mínimo: ${options.minStockAlert}`,
+    ].join('\n')
+
+    let anySent = false
+    for (const to of unique) {
+      const result = await this.sendMail({ to, subject, html, text })
+      if (result.sent) anySent = true
+    }
+    return { sent: anySent }
+  }
+
+  async sendSaleReceipt(
+    options: SaleReceiptEmailProps & {
+      to: string
+      pdfBuffer: Buffer
+    },
+  ) {
+    const {
+      to,
+      pdfBuffer,
+      businessName,
+      invoiceNumber,
+      total,
+      customerName,
+      ...emailProps
+    } = options
+
+    const html = await render(
+      React.createElement(SaleReceiptEmail, {
+        businessName,
+        invoiceNumber,
+        total,
+        customerName,
+        ...emailProps,
+      }),
+    )
+
+    const itemsSummary = emailProps.items
+      .map((i) => `- ${i.quantity} x ${i.name}: ${i.subtotal}`)
+      .join('\n')
+
+    return this.sendMail({
+      to,
+      subject: `Comprobante ${invoiceNumber} — ${businessName}`,
+      html,
+      text: [
+        `${businessName}`,
+        `Hola ${customerName},`,
+        `Comprobante: ${invoiceNumber}`,
+        `Fecha: ${emailProps.saleDate}`,
+        `Total: ${total}`,
+        '',
+        'Productos:',
+        itemsSummary,
+        '',
+        'El PDF del comprobante va adjunto.',
+      ].join('\n'),
       attachments: [
         {
-          filename: `${options.invoiceNumber}.pdf`,
-          content: options.pdfBuffer,
+          filename: `${invoiceNumber.replace(/[^\w.-]+/g, '_')}.pdf`,
+          content: pdfBuffer,
           contentType: 'application/pdf',
         },
       ],
