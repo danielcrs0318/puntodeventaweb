@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Delete, Param, Body,
-  ParseIntPipe, Query, UseGuards, UseInterceptors, UploadedFile,
+  ParseIntPipe, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { memoryStorage } from 'multer'
@@ -105,7 +105,15 @@ export class ProductsController {
   @UseGuards(RolesGuard)
   @Roles('admin', 'supervisor', 'inventario')
   @Post('import')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const isCsv = /\.csv$/i.test(file.originalname) &&
+        ['text/csv', 'application/csv', 'application/vnd.ms-excel', 'text/plain'].includes(file.mimetype)
+      cb(isCsv ? null : new BadRequestException('Solo se permiten archivos CSV'), isCsv)
+    },
+  }))
   importCsv(@UploadedFile() file: Express.Multer.File, @CurrentBranchId() branchId: number) {
     return this.productsService.importCsv(file, branchId)
   }

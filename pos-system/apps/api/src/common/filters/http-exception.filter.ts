@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common'
 import { Request, Response } from 'express'
+import { randomUUID } from 'crypto'
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -33,13 +34,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : 'Error interno del servidor'
 
     const message = Array.isArray(rawMessage) ? rawMessage.join(', ') : String(rawMessage)
-    const requestId = (request.headers['x-request-id'] as string) ?? 'unknown'
+    const suppliedId = request.headers['x-request-id']
+    const requestId = typeof suppliedId === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(suppliedId)
+      ? suppliedId
+      : randomUUID()
+    response.setHeader('X-Request-Id', requestId)
     const userId = request.user?.id
 
     const logContext = {
       requestId,
       method: request.method,
-      path: request.url,
+      path: request.path,
       status,
       userId,
       message,
@@ -47,13 +52,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     if (status >= 500) {
       this.logger.error(
-        `[${requestId}] ${request.method} ${request.url} -> ${status}`,
+        `[${requestId}] ${request.method} ${request.path} -> ${status}`,
         exception instanceof Error ? exception.stack : String(exception),
         JSON.stringify(logContext),
       )
     } else if (status >= 400) {
       this.logger.warn(
-        `[${requestId}] ${request.method} ${request.url} -> ${status}: ${message}`,
+        `[${requestId}] ${request.method} ${request.path} -> ${status}: ${message}`,
         JSON.stringify(logContext),
       )
     }
@@ -61,7 +66,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(status).json({
       statusCode: status,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: request.path,
       requestId,
       message,
       ...(process.env.NODE_ENV !== 'production' && exception instanceof Error && status >= 500

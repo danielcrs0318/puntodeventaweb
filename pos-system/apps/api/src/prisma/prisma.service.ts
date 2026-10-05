@@ -40,6 +40,15 @@ function normalizeMysqlDatabaseUrl(raw: string): string {
     .replace(/\?&/, '?')
     .replace(/&&+/g, '&')
 
+  // MySQL local suele escuchar sin TLS. Forzar sslaccept aquí impide conectar
+  // aunque el servicio esté activo (P1011 en Windows).
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    if (['localhost', '127.0.0.1', '[::1]', '::1'].includes(host)) return url
+  } catch {
+    // Prisma mostrará el error de URL si la cadena no es válida.
+  }
+
   if (/[?&]sslaccept=/i.test(url)) {
     url = url.replace(/([?&]sslaccept=)[^&]*/gi, '$1accept_invalid_certs')
   } else {

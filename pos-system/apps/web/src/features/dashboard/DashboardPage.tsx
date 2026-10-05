@@ -79,7 +79,7 @@ export default function DashboardPage() {
       {/* Encabezado */}
       <div className="page-header mb-8">
         <div>
-          <h1 className="page-title">Panel de Control</h1>
+          <h1 className="page-title">Resumen del negocio</h1>
           <p className="page-subtitle">
             Bienvenido, {user?.name} — {formatDateTime(new Date().toISOString())}
           </p>
@@ -114,7 +114,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* KPI Cards — layout asimétrico */}
+      {/* Resumen al estilo BankDash, alimentado por el servicio actual */}
       <Stagger className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StaggerItem>
           <StatCard
@@ -177,37 +177,37 @@ export default function DashboardPage() {
             <AreaChart data={s.salesChart}>
               <defs>
                 <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                  <stop offset="5%" stopColor="var(--color-accent-primary)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--color-accent-primary)" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#24304D" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
               <XAxis
                 dataKey="date"
-                stroke="#93A2C2"
+                stroke="var(--color-text-secondary)"
                 tick={{ fontSize: 11 }}
                 tickLine={false}
               />
               <YAxis
-                stroke="#93A2C2"
+                stroke="var(--color-text-secondary)"
                 tick={{ fontSize: 11 }}
                 tickLine={false}
                 tickFormatter={(v) => `L.${(v / 1000).toFixed(0)}k`}
               />
               <Tooltip
                 contentStyle={{
-                  background: '#16223B',
-                  border: '1px solid #24304D',
-                  borderRadius: '8px',
-                  color: '#E8EDF7',
+                  background: 'var(--color-bg-elevated)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '12px',
+                  color: 'var(--color-text-primary)',
                 }}
                 formatter={(value) => [formatCurrency(Number(value) || 0), 'Total']}
               />
               <Area
                 type="monotone"
                 dataKey="total"
-                stroke="#2563EB"
-                strokeWidth={2}
+                stroke="var(--color-accent-primary)"
+                strokeWidth={3}
                 fill="url(#colorTotal)"
               />
             </AreaChart>

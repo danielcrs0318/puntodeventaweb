@@ -1,8 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
-import * as fs from 'fs'
-import * as path from 'path'
 
 @Injectable()
 export class ProductsService {
@@ -130,8 +128,10 @@ export class ProductsService {
   }
 
   async importCsv(file: Express.Multer.File, branchId?: number): Promise<{ imported: number; errors: string[] }> {
-    const content = file.buffer?.toString('utf-8') ?? fs.readFileSync(file.path, 'utf-8')
+    if (!file?.buffer) throw new BadRequestException('No se recibió un archivo CSV válido')
+    const content = file.buffer.toString('utf-8')
     const lines = content.split('\n').filter(Boolean)
+    if (lines.length > 5001) throw new BadRequestException('El CSV no puede superar 5000 filas')
     const errors: string[] = []
     let imported = 0
 
@@ -154,8 +154,6 @@ export class ProductsService {
         errors.push(`Fila ${i + 1}: ${err.message}`)
       }
     }
-    // Limpia el archivo temporal
-    if (file.path) fs.unlink(file.path, () => {})
     return { imported, errors }
   }
 

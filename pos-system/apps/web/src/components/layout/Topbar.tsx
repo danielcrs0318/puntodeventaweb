@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -9,6 +10,8 @@ import {
   AlertTriangle,
   DollarSign,
   Building2,
+  Moon,
+  Sun,
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useAuthStore } from '@/store/authStore'
@@ -26,6 +29,9 @@ interface TopbarProps {
 }
 
 export function Topbar({ onMenuToggle, desktopCollapsed }: TopbarProps) {
+  const [theme, setTheme] = useState<'dark' | 'light'>(() =>
+    document.documentElement.dataset.theme === 'light' ? 'light' : 'dark',
+  )
   const { user, logout, branches, activeBranch, setActiveBranch, hasRole } = useAuthStore()
   const clearSession = useCashRegisterStore((s) => s.clearSession)
   const { session: activeSession } = useActiveCashSession()
@@ -42,6 +48,14 @@ export function Topbar({ onMenuToggle, desktopCollapsed }: TopbarProps) {
   const handleLogout = () => {
     logout()
     navigate('/login', { replace: true })
+  }
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? '#0B1220' : '#F5F7FB')
+    try { localStorage.setItem('pos-theme', next) } catch { /* El tema sigue activo en esta sesión */ }
+    setTheme(next)
   }
 
   const handleBranchChange = (branchId: number) => {
@@ -172,6 +186,16 @@ export function Topbar({ onMenuToggle, desktopCollapsed }: TopbarProps) {
         <Bell size={18} />
       </button>
       )}
+
+      <button
+        type="button"
+        onClick={toggleTheme}
+        className="p-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors touch-target"
+        aria-label={theme === 'dark' ? 'Activar tema claro' : 'Activar tema oscuro'}
+        title={theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}
+      >
+        {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
+      </button>
 
       <div className="flex items-center gap-1.5 sm:gap-2 pl-2 sm:pl-3 border-l border-border-subtle flex-shrink-0">
         <div className="w-8 h-8 rounded-full bg-accent-muted flex items-center justify-center flex-shrink-0">

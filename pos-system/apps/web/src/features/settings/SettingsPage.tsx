@@ -187,7 +187,7 @@ export default function SettingsPage() {
   })
 
   const saveUserMutation = useMutation({
-    mutationFn: (data: UserFormData & { pin?: string }) => {
+    mutationFn: async (data: UserFormData & { pin?: string }) => {
       const branchIds = data.branchIds
       const defaultId =
         data.defaultBranchId && branchIds.includes(Number(data.defaultBranchId))
@@ -201,10 +201,13 @@ export default function SettingsPage() {
         defaultBranchId: defaultId,
         ...(data.password ? { password: data.password } : {}),
       }
-      if (editUser) return api.patch(`/users/${editUser.id}`, payload)
+      if (editUser) {
+        await api.patch(`/users/${editUser.id}`, payload)
+        return
+      }
       if (!data.password) throw new Error('La contraseña es requerida')
       if (!data.pin) throw new Error('Ingresa el PIN de verificación')
-      return api.post('/users', { ...payload, password: data.password, pin: data.pin })
+      await api.post('/users', { ...payload, password: data.password, pin: data.pin })
     },
     onSuccess: () => {
       toast.success(editUser ? 'Usuario actualizado' : 'Usuario creado')

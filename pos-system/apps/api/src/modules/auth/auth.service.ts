@@ -141,9 +141,7 @@ export class AuthService {
         settings?.businessName ?? 'POS Honduras',
       )
       if (!mailResult.sent) {
-        this.logger.log(
-          `[password-reset] Resend off — userId=${user.id} email=${normalized} resetUrl=${resetUrl}`,
-        )
+        this.logger.log(`[password-reset] Correo no configurado — userId=${user.id}`)
       }
     } catch (err: unknown) {
       this.logger.error(

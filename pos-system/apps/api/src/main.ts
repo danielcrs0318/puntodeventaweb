@@ -21,6 +21,9 @@ async function bootstrap() {
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('X-Frame-Options', 'SAMEORIGIN')
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+    if (_req.path.startsWith('/uploads/')) {
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
+    }
     if (isProd) {
       res.setHeader('X-DNS-Prefetch-Control', 'off')
       res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains')

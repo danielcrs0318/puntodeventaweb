@@ -23,6 +23,13 @@ function normalizeMysqlDatabaseUrl(raw) {
     .replace(/\?&/, '?')
     .replace(/&&+/g, '&')
 
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    if (['localhost', '127.0.0.1', '[::1]', '::1'].includes(host)) return url
+  } catch {
+    // Prisma reportará cualquier URL inválida.
+  }
+
   if (/[?&]sslaccept=/i.test(url)) {
     url = url.replace(/([?&]sslaccept=)[^&]*/gi, '$1accept_invalid_certs')
   } else {

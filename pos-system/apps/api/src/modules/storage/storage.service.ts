@@ -1,7 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
-import { extname } from 'path'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { v4 as uuidv4 } from 'uuid'
@@ -59,10 +58,17 @@ export class StorageService {
       throw new BadRequestException('Archivo de imagen inválido')
     }
 
-    const ext = (extname(file.originalname) || '.jpg').toLowerCase()
-    const key = `${folder}/${uuidv4()}${ext}`
     const body = file.buffer ?? (await fs.readFile(file.path))
-    const contentType = file.mimetype || 'application/octet-stream'
+    const signatures: Record<string, { ext: string; valid: boolean }> = {
+      'image/jpeg': { ext: '.jpg', valid: body.length >= 3 && body.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])) },
+      'image/png': { ext: '.png', valid: body.length >= 8 && body.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
+      'image/webp': { ext: '.webp', valid: body.length >= 12 && body.toString('ascii', 0, 4) === 'RIFF' && body.toString('ascii', 8, 12) === 'WEBP' },
+      'image/gif': { ext: '.gif', valid: body.length >= 6 && ['GIF87a', 'GIF89a'].includes(body.toString('ascii', 0, 6)) },
+    }
+    const image = signatures[file.mimetype]
+    if (!image?.valid) throw new BadRequestException('El contenido no corresponde a una imagen válida')
+    const key = `${folder}/${uuidv4()}${image.ext}`
+    const contentType = file.mimetype
 
     if (this.s3 && this.bucket && this.publicBaseUrl) {
       await this.s3.send(

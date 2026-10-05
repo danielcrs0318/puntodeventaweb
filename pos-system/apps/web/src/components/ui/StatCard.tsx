@@ -16,16 +16,16 @@ export function StatCard({ label, value, change, changeType = 'neutral', icon, c
     'text-text-secondary'
 
   return (
-    <div className={`card flex flex-col gap-3 ${className}`}>
+    <div className={`card stat-card flex flex-col gap-4 min-h-[150px] ${className}`}>
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-text-secondary uppercase tracking-wide">{label}</p>
+        <p className="text-sm font-medium text-text-secondary">{label}</p>
         {icon && (
-          <div className="w-9 h-9 rounded-lg bg-accent-muted flex items-center justify-center text-accent-primary">
+          <div className="w-11 h-11 rounded-2xl bg-accent-muted flex items-center justify-center text-accent-primary">
             {icon}
           </div>
         )}
       </div>
-      <p className="text-2xl font-bold text-text-primary leading-none">{value}</p>
+      <p className="text-2xl font-bold text-text-primary leading-none tracking-tight">{value}</p>
       {change && (
         <p className={`text-xs ${changeColor}`}>{change}</p>
       )}

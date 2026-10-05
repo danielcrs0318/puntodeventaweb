@@ -16,16 +16,19 @@ export class LoggingInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = context.switchToHttp().getRequest<Request>()
     const res = context.switchToHttp().getResponse<Response>()
-    const requestId = (req.headers['x-request-id'] as string) || randomUUID()
+    const suppliedId = req.headers['x-request-id']
+    const requestId = typeof suppliedId === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(suppliedId)
+      ? suppliedId
+      : randomUUID()
     req.headers['x-request-id'] = requestId
     res.setHeader('X-Request-Id', requestId)
 
-    const { method, originalUrl } = req
+    const { method, path } = req
     const userId = (req as Request & { user?: { id?: number } }).user?.id
     const started = Date.now()
 
     this.logger.log(
-      `[${requestId}] --> ${method} ${originalUrl}${userId ? ` user=${userId}` : ''}`,
+      `[${requestId}] --> ${method} ${path}${userId ? ` user=${userId}` : ''}`,
     )
 
     return next.handle().pipe(
@@ -33,13 +36,13 @@ export class LoggingInterceptor implements NestInterceptor {
         next: () => {
           const ms = Date.now() - started
           this.logger.log(
-            `[${requestId}] <-- ${method} ${originalUrl} ${res.statusCode} ${ms}ms`,
+            `[${requestId}] <-- ${method} ${path} ${res.statusCode} ${ms}ms`,
           )
         },
         error: (err: Error) => {
           const ms = Date.now() - started
           this.logger.error(
-            `[${requestId}] <-- ${method} ${originalUrl} ERROR ${ms}ms: ${err.message}`,
+            `[${requestId}] <-- ${method} ${path} ERROR ${ms}ms: ${err.message}`,
             err.stack,
           )
         },

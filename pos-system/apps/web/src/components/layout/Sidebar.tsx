@@ -86,7 +86,7 @@ export function Sidebar({
 
       <aside
         className={[
-          'fixed top-0 left-0 h-full bg-bg-secondary border-r border-border-subtle z-40 flex flex-col',
+          'fixed top-0 left-0 h-full bg-bg-secondary border-r border-border-subtle z-40 flex flex-col shadow-sm',
           'transition-[width,transform] duration-300 ease-out',
           // Ancho: en móvil siempre w-64; en desktop según colapso
           'w-64',
@@ -128,7 +128,7 @@ export function Sidebar({
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 no-scrollbar">
+        <nav className="flex-1 overflow-y-auto py-5 px-3 space-y-1 no-scrollbar">
           {visibleItems.map((item) => (
             <NavLink
               key={item.to}
@@ -137,7 +137,7 @@ export function Sidebar({
               onClick={onCloseMobile}
               className={({ isActive }) =>
                 [
-                  'relative flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors duration-150 overflow-hidden',
+                  'relative flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-colors duration-150 overflow-hidden',
                   isActive
                     ? 'text-accent-light'
                     : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
@@ -150,7 +150,7 @@ export function Sidebar({
                   {isActive && (
                     <motion.span
                       layoutId="sidebar-active"
-                      className="absolute inset-0 rounded-md bg-accent-muted border border-accent-primary/30"
+                      className="absolute inset-0 rounded-xl bg-accent-muted border border-border-subtle"
                       transition={{ type: 'spring', stiffness: 450, damping: 35 }}
                     />
                   )}
